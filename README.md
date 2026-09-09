@@ -6,16 +6,18 @@ The project combines a small set of common checks into one readable workflow. It
 
 ## Current Features
 
-- Accepts a hostname or URL and normalises the input
-- Resolves the target hostname to an IPv4 address
-- Checks a defined set of common TCP ports
-- Attempts basic banner collection from responsive services
-- Selects HTTP or HTTPS when a common web port is detected
-- Reports HTTP status, selected response headers, size and response time
-- Displays the final URL and number of redirects followed
-- Extracts basic technology hints from headers and HTML
-- Checks the presence of common security headers
-- Reviews selected `robots.txt` directives
+- Hostname / URL normalisation
+- DNS resolution
+- Common TCP port scanning
+- Banner grabbing
+- HTTP response details
+- Page title detection
+- Redirect tracking
+- Technology hints
+- Security header checks
+- robots.txt checks
+- Enumeration information
+- Priority grouping
 
 ## Requirements
 
@@ -53,33 +55,37 @@ Resolve hostname
         ↓
 Check common TCP ports
         ↓
+Collect available banners
+        ↓
 Select an available web service
         ↓
 Inspect the HTTP response
         ↓
 Report technology and security observations
-```
+        ↓
+Check robots.txt
+        ↓
+Prioritise enumeration by discovered services
 
 The results are observations that require interpretation. For example, an unresponsive port may be closed, filtered or omitted from the scan list, while a missing HTTP header does not by itself prove that an application is vulnerable.
 
 ## Current Limitations
 
-- Uses IPv4 hostname resolution
-- Checks only the ports defined in `COMMON_PORTS`
-- Runs checks sequentially
-- Performs lightweight banner collection rather than protocol-specific interrogation
-- Checks web services only when TCP ports 80 or 443 respond
-- Does not currently provide command-line arguments or persistent report output
+- Static port priority
+- Limited OSINT enrichment
+- Common-port scan only
+- Technology detection is basic
+- Priority is not yet evidence-aware
 
 ## Development Direction
 
 Future development may include:
 
-- Command-line arguments and help output
-- Configurable ports and timeouts
-- Structured result objects and report output
-- Improved error reporting
-- Tests for input normalisation and response handling
-- IPv6-aware resolution
+- Evidence-based prioritisation
+- Better DNS / OSINT enrichment
+- TLS / certificate information
+- Sitemap parsing
+- Improved technology detection
+- Cleaner final summary
 
 The development focus is on understanding each addition and keeping the code clear, explainable and proportionate to the project's learning purpose.
