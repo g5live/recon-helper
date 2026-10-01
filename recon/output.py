@@ -5,10 +5,65 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from recon.scanner import ScanReport
+    from recon.web import WebFinding
 
 def render_json(report: ScanReport) -> str:
     """Serialize the scan report to a formatted JSON string."""
     return json.dumps(report.to_dict(), indent=2)
+
+
+def render_web_details(web: WebFinding, indent: str = "    ") -> list[str]:
+    """Render canonical HTTP evidence for text and legacy views."""
+    lines = [
+        f"{indent}http: {web.status} | title: {web.title or '-'}",
+        f"{indent}final url: {web.final_url}",
+        (
+            f"{indent}server: {web.server or '-'} | "
+            f"content type: {web.content_type or '-'}"
+        ),
+    ]
+    if web.powered_by:
+        lines.append(f"{indent}powered by: {web.powered_by}")
+    lines.append(
+        f"{indent}response: {web.response_size} bytes in "
+        f"{web.response_time_ms:.2f} ms | redirects: {web.redirects}"
+    )
+    if web.technology_hints:
+        hints = "; ".join(
+            f"{hint.source}: {hint.evidence}" for hint in web.technology_hints
+        )
+        lines.append(f"{indent}technology hints: {hints}")
+
+    present_headers = [
+        header.name
+        for header in web.security_headers
+        if header.applicable and header.present
+    ]
+    missing_headers = [
+        header.name
+        for header in web.security_headers
+        if header.applicable and not header.present
+    ]
+    lines.append(
+        f"{indent}security headers present: "
+        + (", ".join(present_headers) if present_headers else "none observed")
+    )
+    lines.append(
+        f"{indent}security headers missing: "
+        + (", ".join(missing_headers) if missing_headers else "none observed")
+    )
+
+    if web.robots:
+        status = web.robots.status if web.robots.status is not None else "request failed"
+        lines.append(f"{indent}robots.txt: {status} | {web.robots.url}")
+        if web.robots.disallowed_paths:
+            lines.append(
+                f"{indent}robots disallow: "
+                + ", ".join(web.robots.disallowed_paths)
+            )
+        if web.robots.error:
+            lines.append(f"{indent}robots error: {web.robots.error}")
+    return lines
 
 def render_text(report: ScanReport) -> str:
     """Render human-readable text output with nested finding details."""
@@ -36,50 +91,7 @@ def render_text(report: ScanReport) -> str:
                 if getattr(finding, "url", None):
                     lines.append(f"    url: {finding.url}")
                 if finding.web:
-                    lines.append(
-                        f"    http: {finding.web.status} | "
-                        f"title: {finding.web.title or '-'}"
-                    )
-                    lines.append(f"    final url: {finding.web.final_url}")
-                    lines.append(
-                        f"    server: {finding.web.server or '-'} | "
-                        f"content type: {finding.web.content_type or '-'}"
-                    )
-                    if finding.web.powered_by:
-                        lines.append(f"    powered by: {finding.web.powered_by}")
-                    lines.append(
-                        f"    response: {finding.web.response_size} bytes in "
-                        f"{finding.web.response_time_ms:.2f} ms | "
-                        f"redirects: {finding.web.redirects}"
-                    )
-                    present_headers = [
-                        header.name
-                        for header in finding.web.security_headers
-                        if header.applicable and header.present
-                    ]
-                    missing_headers = [
-                        header.name
-                        for header in finding.web.security_headers
-                        if header.applicable and not header.present
-                    ]
-                    lines.append(
-                        "    security headers present: "
-                        + (", ".join(present_headers) if present_headers else "none observed")
-                    )
-                    lines.append(
-                        "    security headers missing: "
-                        + (", ".join(missing_headers) if missing_headers else "none observed")
-                    )
-                    if finding.web.robots:
-                        robots = finding.web.robots
-                        status = robots.status if robots.status is not None else "request failed"
-                        lines.append(f"    robots.txt: {status} | {robots.url}")
-                        if robots.disallowed_paths:
-                            lines.append(
-                                "    robots disallow: " + ", ".join(robots.disallowed_paths)
-                            )
-                        if robots.error:
-                            lines.append(f"    robots error: {robots.error}")
+                    lines.extend(render_web_details(finding.web))
                 if finding.banner:
                     lines.append(f"    banner: {finding.banner}")
 

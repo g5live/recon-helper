@@ -108,7 +108,11 @@ class WebInspectionTests(unittest.TestCase):
         response = MagicMock()
         response.status_code = 200
         response.url = "https://lab.example/dashboard"
-        response.text = "<html><title>Lab Dashboard</title></html>"
+        response.text = (
+            "<html><head><title>Lab Dashboard</title>"
+            '<meta name="generator" content="WordPress 6.5">'
+            '</head><body><script src="/wp-content/app.js"></script></body></html>'
+        )
         response.content = response.text.encode()
         response.headers = {
             "Server": "nginx",
@@ -149,6 +153,12 @@ class WebInspectionTests(unittest.TestCase):
         self.assertEqual(finding.redirects, 1)
         self.assertEqual(finding.response_time_ms, 125.0)
         self.assertEqual(finding.robots.disallowed_paths, ("/admin", "/backups"))
+        hints = {(hint.source, hint.evidence) for hint in finding.technology_hints}
+        self.assertIn(("X-Powered-By header", "PHP"), hints)
+        self.assertIn(("meta generator", "WordPress 6.5"), hints)
+        self.assertIn(
+            ("HTML path", "WordPress-style wp-content path detected"), hints
+        )
         headers = {header.name: header for header in finding.security_headers}
         self.assertTrue(headers["Strict-Transport-Security"].present)
         self.assertFalse(headers["X-Frame-Options"].present)

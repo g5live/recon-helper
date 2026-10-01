@@ -13,6 +13,7 @@ Recon Helper is a learning-focused Python command-line project for authorised TC
 - Text, table and JSON output
 - Opt-in HTTP inspection with status, redirects, title and response metadata
 - Context-aware security-header observations and structured `robots.txt` paths
+- Evidence-led technology hints from headers, generator metadata and HTML paths
 - Standard-library logging to stderr and optional log files
 - Graceful `SIGINT`/`Ctrl+C` exit status
 - Mocked unit tests that do not scan live targets
@@ -87,7 +88,7 @@ recon-helper/
 │   ├── protocols.py   # Service metadata, probes and banner handling
 │   ├── web.py         # Structured HTTP inspection
 │   ├── output.py      # Text, table and JSON renderers
-│   └── legacy.py      # Temporary original web workflow
+│   └── legacy.py      # Temporary interactive enumeration workflow
 ├── tests/
 │   └── test_scanner.py
 ├── pyproject.toml
@@ -116,5 +117,6 @@ Tests use `unittest.mock` to replace network connections and HTTP responses. The
 
 - TCP only; UDP services require a separate scanner and protocol-specific logic.
 - Service names are port-based hints and still need validation.
-- TLS certificate inspection remains in the legacy workflow.
+- TLS certificate inspection is not yet implemented.
 - HTTP inspection is deliberately opt-in with `--http` because it sends additional requests to discovered services.
+- Technology hints are observations that require confirmation; they are not definitive product or version identification.

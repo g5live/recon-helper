@@ -37,6 +37,12 @@ class RobotsFinding:
 
 
 @dataclass(frozen=True, slots=True)
+class TechnologyHint:
+    source: str
+    evidence: str
+
+
+@dataclass(frozen=True, slots=True)
 class WebFinding:
     status: int
     final_url: str
@@ -47,6 +53,7 @@ class WebFinding:
     response_size: int
     response_time_ms: float
     redirects: int
+    technology_hints: tuple[TechnologyHint, ...] = ()
     security_headers: tuple[HeaderFinding, ...] = ()
     robots: RobotsFinding | None = None
 
@@ -63,6 +70,31 @@ def assess_security_headers(
         value = headers.get(name) if applicable else None
         findings.append(HeaderFinding(name, applicable, bool(value), value))
     return tuple(findings)
+
+
+def detect_technology(
+    headers: requests.structures.CaseInsensitiveDict[str] | dict[str, str],
+    page_text: str,
+    soup: BeautifulSoup,
+) -> tuple[TechnologyHint, ...]:
+    """Return evidence-led hints without claiming a definitive fingerprint."""
+    hints = []
+    powered_by = headers.get("X-Powered-By")
+    if powered_by:
+        hints.append(TechnologyHint("X-Powered-By header", powered_by))
+
+    generator = soup.find("meta", attrs={"name": "generator"})
+    if generator:
+        content = generator.get("content")
+        if isinstance(content, str) and content.strip():
+            hints.append(TechnologyHint("meta generator", content.strip()))
+
+    if "wp-content" in page_text.lower():
+        hints.append(
+            TechnologyHint("HTML path", "WordPress-style wp-content path detected")
+        )
+
+    return tuple(hints)
 
 
 def inspect_robots(base_url: str, timeout: float) -> RobotsFinding:
@@ -105,6 +137,7 @@ def inspect_url(url: str, timeout: float = 10.0) -> WebFinding:
         response_size=len(response.content),
         response_time_ms=round(response.elapsed.total_seconds() * 1000, 2),
         redirects=len(response.history),
+        technology_hints=detect_technology(response.headers, response.text, soup),
         security_headers=assess_security_headers(response.headers, response.url),
         robots=inspect_robots(response.url, timeout),
     )
