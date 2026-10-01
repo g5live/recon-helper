@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from recon.cli import main, parse_ports
 from recon.output import render_json
-from recon.protocols import socket_probe
+from recon.protocols import socket_probe, web_url
 from recon.scanner import TargetError, expand_targets, scan
 
 
@@ -19,6 +19,19 @@ class TargetTests(unittest.TestCase):
 
     def test_parses_ports_and_ranges(self):
         self.assertEqual(parse_ports("443,22,8000-8002"), (22, 443, 8000, 8001, 8002))
+
+    def test_builds_web_urls(self):
+        cases = {
+            80: "http://lab.example",
+            443: "https://lab.example",
+            8080: "http://lab.example:8080",
+            8443: "https://lab.example:8443",
+        }
+        for port, expected in cases.items():
+            with self.subTest(port=port):
+                self.assertEqual(web_url("lab.example", port), expected)
+
+        self.assertIsNone(web_url("lab.example", 22))
 
     @patch("recon.cli.asyncio.run", side_effect=KeyboardInterrupt)
     def test_sigint_returns_shell_interrupt_code(self, run):

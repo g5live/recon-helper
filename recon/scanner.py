@@ -1,5 +1,4 @@
 """Structured CIDR expansion, resolution, and bounded TCP scanning."""
-
 from __future__ import annotations
 
 import asyncio
@@ -17,6 +16,7 @@ from recon.protocols import (
     readable_banner,
     service_name,
     socket_probe,
+    web_url,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class PortFinding:
     service: str
     latency_ms: float
     banner: str | None = None
-
+    url: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class HostScan:
@@ -160,8 +160,13 @@ async def scan_port(
             return None
 
     LOGGER.info("open: %s (%s) %s/tcp", target, address, port)
-    return PortFinding(port, service_name(port), round(latency_ms, 2), banner)
-
+    return PortFinding(
+        port=port,
+        service=service_name(port),
+        latency_ms=round(latency_ms, 2),
+        banner=banner,
+        url=web_url(target, port),
+    )
 
 async def scan_host(
     target: str,

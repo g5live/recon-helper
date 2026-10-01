@@ -1,10 +1,8 @@
 """TCP service metadata and connection helpers."""
-
 from __future__ import annotations
 
 import socket
 import time
-
 
 TCP_SERVICES = {
     21: "Type: FTP (control)",
@@ -200,6 +198,22 @@ def service_name(port: int) -> str:
     """Return a readable service name without the legacy ``Type:`` prefix."""
     return TCP_SERVICES.get(port, "Type: Unknown").removeprefix("Type: ")
 
+def web_url(hostname: str, port: int) -> str | None:
+    schemes = {
+        80: "http",
+        443: "https",
+        8080: "http",
+        8443: "https",
+    }
+
+    scheme = schemes.get(port)
+    if scheme is None:
+        return None
+
+    if port in {80, 443}:
+        return f"{scheme}://{hostname}"
+
+    return f"{scheme}://{hostname}:{port}"
 
 def probe_payload(port: int, hostname: str) -> bytes:
     """Return a small application probe for protocols that expect the client first."""
