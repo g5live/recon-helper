@@ -1,5 +1,4 @@
 """Argument parsing, logging, SIGINT handling, and command-line entry point."""
-
 from __future__ import annotations
 
 import argparse
@@ -11,7 +10,6 @@ import sys
 from recon.legacy import main as legacy_main
 from recon.output import render
 from recon.scanner import TargetError, scan
-
 
 def parse_ports(value: str) -> tuple[int, ...]:
     ports: set[int] = set()
@@ -41,6 +39,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", choices=("text", "table", "json"), default="text")
     parser.add_argument("--timeout", type=float, default=0.75)
     parser.add_argument("--banner-timeout", type=float, default=0.35)
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="inspect discovered HTTP services",
+    )
+    parser.add_argument(
+        "--http-timeout",
+        type=float,
+        default=5.0,
+        help="HTTP request timeout in seconds",
+    )
     parser.add_argument("--concurrency", type=int, default=100)
     parser.add_argument("--max-hosts", type=int, default=256)
     parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="WARNING")
@@ -77,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
         "engine": args.engine,
         "timeout": args.timeout,
         "banner_timeout": args.banner_timeout,
+        "inspect_http": args.http,
+        "http_timeout": args.http_timeout,
         "concurrency": args.concurrency,
         "max_hosts": args.max_hosts,
     }

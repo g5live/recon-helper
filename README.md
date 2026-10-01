@@ -11,6 +11,7 @@ Recon Helper is a learning-focused Python command-line project for authorised TC
 - Selectable ports and ranges
 - Structured result objects
 - Text, table and JSON output
+- Opt-in HTTP inspection with status, redirects, title and response metadata
 - Standard-library logging to stderr and optional log files
 - Graceful `SIGINT`/`Ctrl+C` exit status
 - Mocked unit tests that do not scan live targets
@@ -48,6 +49,12 @@ Bounded lab network with JSON output:
 recon-helper 192.0.2.0/29 --ports 22,80,443 --format json
 ```
 
+Inspect discovered web services and preserve the evidence as JSON:
+
+```bash
+recon-helper 192.0.2.10 --ports 80,443,8080,8443 --http --format json
+```
+
 Compare the blocking socket implementation, safely dispatched through worker threads:
 
 ```bash
@@ -77,6 +84,7 @@ recon-helper/
 │   ├── cli.py         # Arguments, logging, SIGINT and entry point
 │   ├── scanner.py     # CIDR expansion and socket/async scanning
 │   ├── protocols.py   # Service metadata, probes and banner handling
+│   ├── web.py         # Structured HTTP inspection
 │   ├── output.py      # Text, table and JSON renderers
 │   └── legacy.py      # Temporary original web workflow
 ├── tests/
@@ -101,11 +109,11 @@ This keeps machine-readable JSON free from progress messages and allows tests to
 python -m unittest discover -v
 ```
 
-Tests use `unittest.mock` to replace `asyncio.open_connection()` and `socket.socket()`. They verify CIDR expansion, safety limits, port parsing, both engines, JSON structure and SIGINT handling without touching external systems.
+Tests use `unittest.mock` to replace network connections and HTTP responses. They verify CIDR expansion, safety limits, port parsing, both engines, HTTP inspection, renderers, JSON structure and SIGINT handling without touching external systems.
 
 ## Current Limits and Next Stage
 
 - TCP only; UDP services require a separate scanner and protocol-specific logic.
 - Service names are port-based hints and still need validation.
-- TLS certificate and HTTP enrichment remain in the legacy workflow.
-- The next migration will convert the legacy HTTP observations into structured results before removing `legacy.py`.
+- TLS certificate inspection and security-header assessment remain in the legacy workflow.
+- HTTP inspection is deliberately opt-in with `--http` because it sends additional requests to discovered services.

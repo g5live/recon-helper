@@ -35,13 +35,30 @@ def render_text(report: ScanReport) -> str:
                 )
                 if getattr(finding, "url", None):
                     lines.append(f"    url: {finding.url}")
+                if finding.web:
+                    lines.append(
+                        f"    http: {finding.web.status} | "
+                        f"title: {finding.web.title or '-'}"
+                    )
+                    lines.append(f"    final url: {finding.web.final_url}")
+                    lines.append(
+                        f"    server: {finding.web.server or '-'} | "
+                        f"content type: {finding.web.content_type or '-'}"
+                    )
+                    if finding.web.powered_by:
+                        lines.append(f"    powered by: {finding.web.powered_by}")
+                    lines.append(
+                        f"    response: {finding.web.response_size} bytes in "
+                        f"{finding.web.response_time_ms:.2f} ms | "
+                        f"redirects: {finding.web.redirects}"
+                    )
                 if finding.banner:
                     lines.append(f"    banner: {finding.banner}")
 
     return "\n".join(lines)
 
 def render_table(report: ScanReport) -> str:
-    headings = ("TARGET", "ADDRESS", "PORT", "SERVICE", "LATENCY", "URL")
+    headings = ("TARGET", "ADDRESS", "PORT", "SERVICE", "LATENCY", "HTTP", "URL")
     rows = [
         (
             host.target,
@@ -49,6 +66,7 @@ def render_table(report: ScanReport) -> str:
             str(finding.port),
             finding.service,
             f"{finding.latency_ms:.2f} ms",
+            str(finding.web.status) if finding.web else "-",
             getattr(finding, "url", None) or "-",
         )
         for host in report.hosts

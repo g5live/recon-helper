@@ -1,6 +1,6 @@
 """Structured CIDR expansion, resolution, and bounded TCP scanning."""
 from __future__ import annotations
-
+from requests import RequestException
 import asyncio
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -9,7 +9,7 @@ import logging
 import socket
 import time
 from urllib.parse import urlsplit
-
+from recon.web import WebFinding, inspect_url
 from recon.protocols import (
     TCP_SERVICES,
     probe_payload,
@@ -21,10 +21,8 @@ from recon.protocols import (
 
 LOGGER = logging.getLogger(__name__)
 
-
 class TargetError(ValueError):
     """Target input is empty, invalid, or exceeds a deliberate safety limit."""
-
 
 @dataclass(frozen=True, slots=True)
 class PortFinding:
@@ -33,6 +31,7 @@ class PortFinding:
     latency_ms: float
     banner: str | None = None
     url: str | None = None
+    web: WebFinding | None = None
 
 @dataclass(frozen=True, slots=True)
 class HostScan:
@@ -144,6 +143,8 @@ async def scan_port(
     timeout: float,
     banner_timeout: float,
     semaphore: asyncio.Semaphore,
+    inspect_http: bool = False,
+    http_timeout: float = 5.0,
 ) -> PortFinding | None:
     async with semaphore:
         try:
@@ -160,12 +161,24 @@ async def scan_port(
             return None
 
     LOGGER.info("open: %s (%s) %s/tcp", target, address, port)
+
+    endpoint = web_url(target, port)
+    web = None
+
+    if inspect_http and endpoint:
+        try:
+            async with semaphore:
+                web = await asyncio.to_thread(inspect_url, endpoint, http_timeout)
+        except RequestException as error:
+            LOGGER.warning("HTTP inspection failed for %s: %s", endpoint, error)
+
     return PortFinding(
         port=port,
         service=service_name(port),
         latency_ms=round(latency_ms, 2),
         banner=banner,
-        url=web_url(target, port),
+        url=endpoint,
+        web=web,
     )
 
 async def scan_host(
@@ -176,6 +189,8 @@ async def scan_host(
     timeout: float,
     banner_timeout: float,
     semaphore: asyncio.Semaphore,
+    inspect_http: bool,
+    http_timeout: float,
 ) -> HostScan:
     try:
         address = await resolve_target(target)
@@ -192,6 +207,8 @@ async def scan_host(
             timeout=timeout,
             banner_timeout=banner_timeout,
             semaphore=semaphore,
+            inspect_http=inspect_http,
+            http_timeout=http_timeout,
         ) for port in ports)
     )
     open_ports = tuple(sorted((finding for finding in findings if finding), key=lambda item: item.port))
@@ -205,12 +222,14 @@ async def scan(
     engine: str = "async",
     timeout: float = 0.75,
     banner_timeout: float = 0.35,
+    inspect_http: bool = False,
+    http_timeout: float = 5.0,
     concurrency: int = 100,
     max_hosts: int = 256,
 ) -> ScanReport:
     if concurrency < 1:
         raise ValueError("concurrency must be at least 1")
-    if timeout <= 0 or banner_timeout <= 0:
+    if timeout <= 0 or banner_timeout <= 0 or http_timeout <= 0:
         raise ValueError("timeouts must be greater than zero")
 
     expanded = expand_targets(targets, max_hosts=max_hosts)
@@ -230,6 +249,8 @@ async def scan(
             timeout=timeout,
             banner_timeout=banner_timeout,
             semaphore=semaphore,
+            inspect_http=inspect_http,
+            http_timeout=http_timeout,
         ) for target in expanded)
     )
     duration_ms = round((time.perf_counter() - started) * 1000, 2)

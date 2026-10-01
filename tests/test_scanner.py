@@ -4,10 +4,10 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from recon.cli import main, parse_ports
-from recon.output import render_json
+from recon.output import render_json, render_table, render_text
 from recon.protocols import socket_probe, web_url
 from recon.scanner import TargetError, expand_targets, scan
-
+from recon.web import WebFinding, inspect_url
 
 class TargetTests(unittest.TestCase):
     def test_expands_cidr_hosts(self):
@@ -39,7 +39,6 @@ class TargetTests(unittest.TestCase):
         run.assert_called_once()
         run.call_args.args[0].close()
 
-
 class AsyncScannerTests(unittest.IsolatedAsyncioTestCase):
     async def test_async_engine_records_open_port(self):
         reader = MagicMock()
@@ -65,6 +64,74 @@ class AsyncScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["hosts"][0]["target"], "192.0.2.1")
         self.assertEqual(data["hosts"][0]["open_ports"], [])
 
+    async def test_http_inspection_reaches_scan_and_renderers(self):
+        reader = MagicMock()
+        reader.read = AsyncMock(return_value=b"HTTP/1.0 200 OK\r\n\r\n")
+        writer = MagicMock()
+        writer.drain = AsyncMock()
+        writer.wait_closed = AsyncMock()
+        web = WebFinding(
+            status=200,
+            final_url="http://192.0.2.1:8080/",
+            title="Lab Dashboard",
+            server="nginx",
+            content_type="text/html",
+            powered_by=None,
+            response_size=512,
+            response_time_ms=25.0,
+            redirects=0,
+        )
+
+        with (
+            patch(
+                "recon.scanner.asyncio.open_connection",
+                new=AsyncMock(return_value=(reader, writer)),
+            ),
+            patch("recon.scanner.inspect_url", return_value=web) as inspect,
+        ):
+            report = await scan(
+                ["192.0.2.1"],
+                ports=(8080,),
+                inspect_http=True,
+            )
+
+        finding = report.hosts[0].open_ports[0]
+        self.assertEqual(finding.web, web)
+        inspect.assert_called_once_with("http://192.0.2.1:8080", 5.0)
+        self.assertIn("http: 200 | title: Lab Dashboard", render_text(report))
+        self.assertIn("HTTP", render_table(report))
+        self.assertIn("200", render_table(report))
+
+class WebInspectionTests(unittest.TestCase):
+    @patch("recon.web.requests.get")
+    def test_inspect_url_returns_structured_evidence(self, get):
+        response = get.return_value
+        response.status_code = 200
+        response.url = "https://lab.example/dashboard"
+        response.text = "<html><title>Lab Dashboard</title></html>"
+        response.content = response.text.encode()
+        response.headers = {
+            "Server": "nginx",
+            "Content-Type": "text/html",
+            "X-Powered-By": "PHP",
+        }
+        response.elapsed.total_seconds.return_value = 0.125
+        response.history = [MagicMock()]
+
+        finding = inspect_url("http://lab.example", timeout=2.0)
+
+        get.assert_called_once_with(
+            "http://lab.example",
+            timeout=2.0,
+            headers={"User-Agent": "recon-helper/0.3"},
+        )
+        self.assertEqual(finding.status, 200)
+        self.assertEqual(finding.final_url, "https://lab.example/dashboard")
+        self.assertEqual(finding.title, "Lab Dashboard")
+        self.assertEqual(finding.server, "nginx")
+        self.assertEqual(finding.powered_by, "PHP")
+        self.assertEqual(finding.redirects, 1)
+        self.assertEqual(finding.response_time_ms, 125.0)
 
 class SocketEngineTests(unittest.TestCase):
     @patch("recon.protocols.socket.socket")
@@ -76,7 +143,6 @@ class SocketEngineTests(unittest.TestCase):
         sock.connect.assert_called_once_with(("192.0.2.1", 22))
         self.assertGreaterEqual(latency, 0)
         self.assertEqual(banner, "SSH-2.0-test")
-
 
 if __name__ == "__main__":
     unittest.main()
