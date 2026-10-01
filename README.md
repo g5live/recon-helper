@@ -120,3 +120,50 @@ Tests use `unittest.mock` to replace network connections and HTTP responses. The
 - TLS certificate inspection is not yet implemented.
 - HTTP inspection is deliberately opt-in with `--http` because it sends additional requests to discovered services.
 - Technology hints are observations that require confirmation; they are not definitive product or version identification.
+
+## Planned Roadmap
+
+1. Target and port ingestion
+   - -iL targets.txt
+   - --top-ports 100
+   - Named presets such as --preset web and --preset remote
+   - Combine files, CIDRs, hostnames, and CLI targets safely
+2. Service validation
+   - Distinguish port-based service hints from confirmed protocols
+   - Add bounded protocol-specific probes
+   - Record hinted_service, detected_service, and supporting evidence
+   - Improve SSH and FTP banner interpretation
+3. TLS inspection
+   - Certificate subject and issuer
+   - SAN hostnames
+   - Validity period and expiry
+   - TLS version and cipher observations
+   - Clear handling of self-signed lab certificates
+4. Rate and interruption controls
+   - Requests-per-second or connection-delay limits
+   - Preserve completed findings when interrupted
+   - Render or save partial results after Ctrl+C
+   - Keep concurrency and rate limiting as separate controls
+5. Direct file export
+   - -oJ results.json
+   - -oT results.txt
+   - Optional table export
+   - Safe overwrite behaviour and useful exit codes
+6. UDP scanning
+   - Separate UDP engine
+   - Protocol-specific probes for DNS, SNMP, NTP, and TFTP
+   - Distinguish open, closed, and open|filtered
+   - Conservative defaults because UDP scanning behaves differently from TCP
+7. Test expansion
+   - Parser edge cases and invalid inputs
+   - Timeouts, partial interruption, rate limiting, TLS, and file exports
+   - Output-schema regression tests
+   - pytest adoption if its fixtures and parameterisation add value; the current unittest suite is already valid
+8. Public release preparation
+   - Versioning and changelog
+   - Licence and contribution guidance
+   - CI test workflow
+   - Installation and usage examples
+   - Supported Python versions
+   - Clear authorised-use scope
+   - Build and installation testing in a clean environment
