@@ -3,24 +3,19 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlsplit
 
-COMMON_PORTS = {
+TCP_SERVICES = {
     21: "Type: FTP (control)",
     22: "Type: SSH",
     23: "Type: Telnet",
     25: "Type: SMTP",
     53: "Type: DNS",
-    67: "Type: DHCP (Server)",
-    68: "Type: DHCP (Client)",
-    69: "Type: FTP (control)",
     80: "Type: HTTP",
     110: "Type: POP3",
     143: "Type: IMAP",
-    161: "Type: SNMP",
-    162: "Type: SNMP (Trap)",
     443: "Type: HTTPS",
     445: "Type: SMB",
     465: "Type: SMTPS",
-    587: "Type: SMTP (Submissions)",
+    578: "Type: SMTP (Submissions)",
     853: "Type: DNS over TLS",
     989: "Type: FTPS (Data)",
     990: "Type: FTPS (Control)",
@@ -191,13 +186,6 @@ PORT_PRIORITY = {
     578: 3,
     853: 3,
 
-    67: 4,
-    68: 4,
-    69: 4,
-    123: 4,
-    161: 4,
-    162: 4,
-
 }
 
 PRIORITY_LABELS = {
@@ -233,12 +221,12 @@ def grab_banner(ip_address, port):
     except (socket.timeout, OSError):
         return None
 
-def scan_common_ports(ip_address):
+def scan_tcp_ports(ip_address):
     open_ports = []
 
-    print("\n--- CHECKING COMMON PORTS ---")
+    print("\n--- CHECKING TCP PORTS ---")
 
-    for port, service in COMMON_PORTS.items():
+    for port, service in TCP_SERVICES.items():
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(0.5)
 
@@ -256,7 +244,7 @@ def scan_common_ports(ip_address):
 
     if not open_ports:
         print(
-            "No common TCP ports responded "
+            "No TCP ports responded "
             "(closed, filtered, or not in scan list)."
         )
 
@@ -404,7 +392,7 @@ def check_security_headers(response):
         else:
             print(f"{header}: not present")
 
-def check_robots(web_url, response):
+def check_robots(web_url: str | None) -> str | None:
     print("\n--- CHECKING ROBOTS.TXT ---")
 
     if not web_url:
@@ -444,7 +432,7 @@ def main():
     if ip_address is None:
         return
 
-    open_ports = scan_common_ports(ip_address)
+    open_ports = scan_tcp_ports(ip_address)
 
     web_url = choose_web_url(hostname, open_ports)
 
@@ -454,7 +442,7 @@ def main():
 
     check_security_headers(response)
 
-    robots_info = check_robots(web_url, response)
+    robots_info = check_robots(web_url)
 
     enumeration_info(open_ports, robots_info)
 
