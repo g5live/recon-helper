@@ -1,13 +1,13 @@
 import json
 import socket
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from recon.cli import main, parse_ports
 from recon.output import render_json, render_table, render_text
 from recon.protocols import socket_probe, web_url
 from recon.scanner import TargetError, expand_targets, scan
-from recon.web import WebFinding, inspect_url
+from recon.web import WebFinding, assess_security_headers, inspect_url
 
 class TargetTests(unittest.TestCase):
     def test_expands_cidr_hosts(self):
@@ -105,7 +105,7 @@ class AsyncScannerTests(unittest.IsolatedAsyncioTestCase):
 class WebInspectionTests(unittest.TestCase):
     @patch("recon.web.requests.get")
     def test_inspect_url_returns_structured_evidence(self, get):
-        response = get.return_value
+        response = MagicMock()
         response.status_code = 200
         response.url = "https://lab.example/dashboard"
         response.text = "<html><title>Lab Dashboard</title></html>"
@@ -114,16 +114,32 @@ class WebInspectionTests(unittest.TestCase):
             "Server": "nginx",
             "Content-Type": "text/html",
             "X-Powered-By": "PHP",
+            "Strict-Transport-Security": "max-age=31536000",
+            "Content-Security-Policy": "default-src 'self'",
         }
         response.elapsed.total_seconds.return_value = 0.125
         response.history = [MagicMock()]
+        robots = MagicMock()
+        robots.status_code = 200
+        robots.text = "User-agent: *\nDisallow: /admin\nDisallow: /backups # private\n"
+        get.side_effect = [response, robots]
 
         finding = inspect_url("http://lab.example", timeout=2.0)
 
-        get.assert_called_once_with(
-            "http://lab.example",
-            timeout=2.0,
-            headers={"User-Agent": "recon-helper/0.3"},
+        self.assertEqual(
+            get.call_args_list,
+            [
+                call(
+                    "http://lab.example",
+                    timeout=2.0,
+                    headers={"User-Agent": "recon-helper/0.3"},
+                ),
+                call(
+                    "https://lab.example/robots.txt",
+                    timeout=2.0,
+                    headers={"User-Agent": "recon-helper/0.3"},
+                ),
+            ],
         )
         self.assertEqual(finding.status, 200)
         self.assertEqual(finding.final_url, "https://lab.example/dashboard")
@@ -132,6 +148,20 @@ class WebInspectionTests(unittest.TestCase):
         self.assertEqual(finding.powered_by, "PHP")
         self.assertEqual(finding.redirects, 1)
         self.assertEqual(finding.response_time_ms, 125.0)
+        self.assertEqual(finding.robots.disallowed_paths, ("/admin", "/backups"))
+        headers = {header.name: header for header in finding.security_headers}
+        self.assertTrue(headers["Strict-Transport-Security"].present)
+        self.assertFalse(headers["X-Frame-Options"].present)
+
+    def test_hsts_is_not_applicable_to_plain_http(self):
+        findings = assess_security_headers({}, "http://lab.example")
+        hsts = next(
+            finding
+            for finding in findings
+            if finding.name == "Strict-Transport-Security"
+        )
+        self.assertFalse(hsts.applicable)
+        self.assertFalse(hsts.present)
 
 class SocketEngineTests(unittest.TestCase):
     @patch("recon.protocols.socket.socket")
