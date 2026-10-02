@@ -32,7 +32,7 @@ def parse_ports(value: str) -> tuple[int, ...]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evidence-led TCP reconnaissance helper")
+    parser = argparse.ArgumentParser(description="G5LIVE Recon Helper — evidence-led TCP reconnaissance")
     parser.add_argument("targets", nargs="*", help="hostname, URL, IP address, or CIDR network")
     parser.add_argument("--ports", type=parse_ports, help="comma-separated ports and ranges")
     parser.add_argument("--engine", choices=("async", "socket"), default="async")

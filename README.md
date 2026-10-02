@@ -1,3 +1,5 @@
+![G5LIVE — Build · Understand · Apply](assets/brand/g5live.svg)
+
 # Recon Helper
 
 Recon Helper is a learning-focused Python command-line project for authorised TCP reconnaissance. It accepts hostnames, URLs, individual addresses and bounded CIDR networks, then returns structured evidence rather than treating an open port as a vulnerability.
@@ -167,3 +169,6 @@ Tests use `unittest.mock` to replace network connections and HTTP responses. The
    - Supported Python versions
    - Clear authorised-use scope
    - Build and installation testing in a clean environment
+## Shared brand and release preparation
+
+Part of the G5LIVE app family. See the [shared brand guide](assets/brand/BRAND.md) and [project-specific release-readiness review](docs/RELEASE_READINESS.md) for proposed functionality and public-release preparation.

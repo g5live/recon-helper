@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="112" viewBox="0 0 440 112" role="img" aria-labelledby="title desc">
+<title id="title">G5LIVE</title><desc id="desc">Connected learning nodes. Build, understand, apply.</desc>
+<rect width="440" height="112" rx="18" fill="#10151d"/>
+<path d="M30 76V36H78M30 76H78V56H55" fill="none" stroke="#a7d6ff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="30" cy="36" r="6" fill="#a7d6ff"/><circle cx="78" cy="36" r="6" fill="#dfa448"/><circle cx="78" cy="76" r="6" fill="#47bc83"/>
+<text x="106" y="58" fill="#e8edf4" font-family="DejaVu Sans,Arial,sans-serif" font-size="35" font-weight="700" letter-spacing="3">G5LIVE</text>
+<text x="108" y="83" fill="#aebacd" font-family="DejaVu Sans,Arial,sans-serif" font-size="12" letter-spacing="2">BUILD · UNDERSTAND · APPLY</text>
+</svg>
