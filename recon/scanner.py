@@ -76,10 +76,9 @@ def expand_targets(values: list[str] | tuple[str, ...], max_hosts: int = 256) ->
         except ValueError:
             targets = (normalise_target(candidate),)
         else:
-            targets = tuple(str(address) for address in network.hosts())
+            targets = (str(address) for address in network.hosts())
             if network.num_addresses == 1:
                 targets = (str(network.network_address),)
-
         for target in targets:
             if target not in seen:
                 seen.add(target)

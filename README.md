@@ -4,6 +4,32 @@
 
 Recon Helper is a learning-focused Python command-line project for authorised TCP reconnaissance. It accepts hostnames, URLs, individual addresses and bounded CIDR networks, then returns structured evidence rather than treating an open port as a vulnerability.
 
+### Target files
+
+Use `-iL` or `--target-file` to read targets from a UTF-8 file:
+```bash
+python recon.py -iL targets.txt --ports 22,80,443
+```
+
+Place one target per line. Blank lines and lines beginning with `#`
+are ignored. Targets can be IP addresses, hostnames, URLs or CIDRs.
+
+Command-line targets can be combined with file targets:
+
+```bash
+python recon.py localhost -iL targets.txt --ports 22,80
+```
+
+Both sources use the same normalisation, deduplication and CIDR
+expansion logic. The default limit is 256 unique expanded targets
+across both sources; change it deliberately with `--max-hosts`.
+
+CIDRs expand incrementally so oversized ranges are rejected without
+first collecting every address.
+
+Unreadable files, or files containing no targets when no command-line
+targets are supplied, return exit code 2 without starting a scan.
+
 ## Current Features
 
 - Native hostname, URL, IP and CIDR input
@@ -172,3 +198,16 @@ Tests use `unittest.mock` to replace network connections and HTTP responses. The
 ## Shared brand and release preparation
 
 Part of the G5LIVE app family. See the [shared brand guide](assets/brand/BRAND.md) and [project-specific release-readiness review](docs/RELEASE_READINESS.md) for proposed functionality and public-release preparation.
+
+## Guided terminal start
+
+Run the main file without arguments:
+
+```bash
+cd ~/Projects/Pycharm/recon-helper
+.venv/bin/python recon.py
+```
+
+Enter your target IP, hostname, URL or CIDR at the Target address(es) prompt. Multiple targets can be separated with spaces. Press Enter at the ports prompt for the default common ports, or supply a list such as 22,80,443. Type q at the target prompt to exit.
+
+In PyCharm, run `recon.py` with no script parameters and use the project `.venv/bin/python` interpreter. Click in the Run console to type your answers. Ctrl+C cancels input. Existing argument-based usage and `--help` remain available.

@@ -30,10 +30,30 @@ def parse_ports(value: str) -> tuple[int, ...]:
         raise argparse.ArgumentTypeError("ports must be between 1 and 65535")
     return tuple(sorted(ports))
 
+def read_target_file(path: Path) -> list[str]:
+    targets: list[str] = []
+    try:
+        with path.open(encoding="utf-8") as target_file:
+            for line in target_file:
+                target = line.strip()
+                if not target or target.startswith("#"):
+                    continue
+                targets.append(target)
+    except (OSError, UnicodeError) as error:
+        raise TargetError(
+            f"cannot read target file {path}: {error}"
+        ) from error
+    return targets
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="G5LIVE Recon Helper — evidence-led TCP reconnaissance")
     parser.add_argument("targets", nargs="*", help="hostname, URL, IP address, or CIDR network")
+    parser.add_argument(
+        "-iL",
+        "--target-file",
+        type=Path,
+        help="read targets from a file, one per line",
+    )
     parser.add_argument("--ports", type=parse_ports, help="comma-separated ports and ranges")
     parser.add_argument("--engine", choices=("async", "socket"), default="async")
     parser.add_argument("--format", choices=("text", "table", "json"), default="text")
@@ -71,15 +91,51 @@ def configure_logging(level: str, log_file: Path | None) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(arguments)
     if args.legacy:
         legacy_main()
         return 0
 
-    targets = args.targets
+    targets = list(args.targets)
+    if args.target_file is not None:
+        try:
+            file_targets = read_target_file(args.target_file)
+        except TargetError as error:
+            print(f"Error: {error}", file=sys.stderr)
+            return 2
+        targets.extend(file_targets)
+        if not targets:
+            print("Error: no usable targets supplied.", file=sys.stderr)
+            return 2
     if not targets:
-        entered = input("target host, URL, IP or CIDR: ").strip()
-        targets = [entered]
+        try:
+            print('\nG5LIVE Recon Helper — start here', file=sys.stderr)
+            print('Enter an IP address, hostname, URL or CIDR. Separate multiple targets with spaces.', file=sys.stderr)
+            print('Example: 127.0.0.1    Type q to exit.', file=sys.stderr)
+            while not targets:
+                entered = input('Target address(es): ').strip()
+                if entered.lower() in ('q', 'quit', 'exit'):
+                    return 0
+                targets = entered.split()
+                if not targets:
+                    print('Please enter at least one target.', file=sys.stderr)
+            if not arguments:
+                while True:
+                    entered_ports = input('Ports (Enter for the default common ports; e.g. 22,80,443): ').strip()
+                    if not entered_ports:
+                        break
+                    try:
+                        args.ports = parse_ports(entered_ports)
+                        break
+                    except argparse.ArgumentTypeError as error:
+                        print(str(error), file=sys.stderr)
+        except EOFError:
+            print('Input ended. Run with --help for command-line usage.', file=sys.stderr)
+            return 0
+        except KeyboardInterrupt:
+            print('\nCancelled.', file=sys.stderr)
+            return 130
 
     configure_logging(args.log_level, args.log_file)
     options = {
