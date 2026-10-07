@@ -15,7 +15,6 @@ python -m pip install -e .
 ```
 Only run reconnaissance against systems you own or have explicit permission to test.
 
-
 ### Target files
 
 Use `-iL` or `--target-file` to read targets from a UTF-8 file:
@@ -61,19 +60,18 @@ Without either option, the existing default port set is used.
 
 ### Service hints and banner identification
 
-The `service` field is a port-based hint, shown as `HINT` in table
-output and `hint:` in text output.
-
 The separate `detected_service` field records identification from
-supported banner patterns. Currently, SSH identification banners
-are recognised independently of the port number.
+supported banner patterns, independently of the port number.
 
-The captured `banner` provides the supporting evidence. A missing
-or unrecognised banner leaves `detected_service` as null in JSON
-and `-` in table output.
+SSH identification banners are recognised. FTP identification
+requires a `220` greeting line whose text explicitly includes the
+standalone word `FTP`, case-insensitively. Generic `220` greetings
+remain unidentified because the code alone does not distinguish FTP
+from SMTP.
 
-Banner identification does not verify the advertised software,
-version or authenticity. This interpretation adds no network requests.
+This narrow rule can miss FTP servers that do not explicitly name
+FTP in their greeting. Banner identification does not verify the
+advertised software, version or authenticity and adds no network requests.
 
 ## Current Features
 
@@ -192,10 +190,10 @@ Tests use `unittest.mock` to replace network connections and HTTP responses. The
    - Extend input validation and edge-case coverage as needed
    - Completed: target files, shared CLI/file processing, deduplication, incremental CIDR limits and web/remote presets
 2. Further service validation — next stage
-   - Improve FTP banner interpretation without mistaking generic `220` greetings for FTP
-   - Add bounded protocol-specific probes where banner evidence is insufficient
+   - Implemented: SSH and explicit FTP banner identification. 
+   - Pending: broader FTP interpretation and bounded protocol-specific probes
    - Keep port hints, detected protocols and supporting evidence separate
-   - Consider an explicit `hinted_service` field with a documented compatibility plan for the existing `service` field
+   - Explicit `hinted_service` field with a documented compatibility plan for the existing `service` field
    - Completed: SSH banner identification independent of port number, separate `detected_service` and banner evidence, and hint/detection labels in all output formats
 3. TLS inspection
    - Certificate subject and issuer

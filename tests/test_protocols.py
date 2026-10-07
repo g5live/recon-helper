@@ -33,11 +33,39 @@ class BannerDetectionTests(unittest.TestCase):
             with self.subTest(banner=banner):
                 self.assertIsNone(detect_banner_service(banner))
 
+    def test_recognises_explicit_ftp_greetings(self):
+        banners = (
+            "220 Welcome to the FTP service",
+            "220 ftp server ready",
+            "220-Welcome to the FTP service | 220 Ready",
+        )
+        for banner in banners:
+            with self.subTest(banner=banner):
+                self.assertEqual(
+                    detect_banner_service(banner),
+                    "FTP",
+                )
+
+    def test_leaves_ambiguous_or_unrelated_greetings_unidentified(self):
+        banners = (
+            "220 Service ready",
+            "220 mail.example ESMTP ready",
+            "220 SFTP service ready",
+            "Welcome to the FTP service",
+            "500 FTP service unavailable",
+        )
+        for banner in banners:
+            with self.subTest(banner=banner):
+                self.assertIsNone(detect_banner_service(banner))
+
 class ServiceDetectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_detection_depends_on_banner_not_port(self):
         cases = (
             (2222, "SSH-2.0-OpenSSH_9.6", "SSH"),
             (22, None, None),
+            (2121, "220 Welcome to the FTP service", "FTP"),
+            (21, "220 Service ready", None),
+            (21, "220 mail.example ESMTP ready", None),
         )
         for port, banner, expected in cases:
             with self.subTest(port=port):

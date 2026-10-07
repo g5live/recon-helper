@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import socket
 import time
+import re
 
 TCP_SERVICES = {
     21: "Type: FTP (control)",
@@ -229,6 +230,10 @@ def detect_banner_service(banner: str | None) -> str | None:
             software = line.split("-", 2)[2].strip()
             if software:
                 return "SSH"
+        if line.startswith(("220 ", "220-")):
+            greeting = line[4:]
+            if re.search(r"\bFTP\b", greeting, flags=re.IGNORECASE):
+                return "FTP"
     return None
 
 def readable_banner(data: bytes) -> str | None:
