@@ -30,6 +30,23 @@ first collecting every address.
 Unreadable files, or files containing no targets when no command-line
 targets are supplied, return exit code 2 without starting a scan.
 
+### Port presets
+
+Select a small named TCP port set:
+```bash
+python recon.py localhost --preset web
+python recon.py localhost --preset remote
+```
+
+- `web`: 80, 443, 8080, 8443
+- `remote`: 22, 23, 3389
+
+Presets select ports only; HTTP inspection still requires `--http`.
+These sets are not exhaustive, and port numbers do not confirm service identity.
+
+Use either `--preset` or `--ports`; supplying both is rejected.
+Without either option, the existing default port set is used.
+
 ## Current Features
 
 - Native hostname, URL, IP and CIDR input

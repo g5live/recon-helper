@@ -11,6 +11,11 @@ from recon.legacy import main as legacy_main
 from recon.output import render
 from recon.scanner import TargetError, scan
 
+PORT_PRESETS: dict[str, tuple[int, ...]] = {
+    "web": (80, 443, 8080, 8443),
+    "remote": (22, 23, 3389),
+}
+
 def parse_ports(value: str) -> tuple[int, ...]:
     ports: set[int] = set()
     try:
@@ -54,7 +59,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="read targets from a file, one per line",
     )
-    parser.add_argument("--ports", type=parse_ports, help="comma-separated ports and ranges")
+    port_selection = parser.add_mutually_exclusive_group()
+    port_selection.add_argument(
+        "--ports",
+        type=parse_ports,
+        help="comma-separated ports and ranges",
+    )
+    port_selection.add_argument(
+        "--preset",
+        choices=PORT_PRESETS,
+        help="select a named port set",
+    )
     parser.add_argument("--engine", choices=("async", "socket"), default="async")
     parser.add_argument("--format", choices=("text", "table", "json"), default="text")
     parser.add_argument("--timeout", type=float, default=0.75)
@@ -77,7 +92,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--legacy", action="store_true", help="run the original interactive web workflow")
     return parser
 
-
 def configure_logging(level: str, log_file: Path | None) -> None:
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     if log_file:
@@ -88,7 +102,6 @@ def configure_logging(level: str, log_file: Path | None) -> None:
         handlers=handlers,
         force=True,
     )
-
 
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
@@ -149,7 +162,8 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.ports is not None:
         options["ports"] = args.ports
-
+    elif args.preset is not None:
+        options["ports"] = PORT_PRESETS[args.preset]
     try:
         report = asyncio.run(scan(targets, **options))
     except KeyboardInterrupt:
@@ -158,10 +172,8 @@ def main(argv: list[str] | None = None) -> int:
     except (TargetError, ValueError) as error:
         logging.getLogger(__name__).error("%s", error)
         return 2
-
     sys.stdout.write(render(report, args.format) + "\n")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

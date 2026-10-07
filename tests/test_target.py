@@ -102,3 +102,43 @@ class TargetFileTests(unittest.TestCase):
                 ["192.0.2.1", "192.0.2.0/30", "192.0.2.3"],
                 max_hosts=2,
             )
+
+    def test_presets_reach_scanner(self):
+        cases = {
+            "web": (80, 443, 8080, 8443),
+            "remote": (22, 23, 3389),
+        }
+
+        for preset, expected_ports in cases.items():
+            with self.subTest(preset=preset):
+                with (
+                    patch("recon.cli.scan", new_callable=AsyncMock) as scan,
+                    patch("recon.cli.render", return_value="test report"),
+                    patch("sys.stdout", new_callable=io.StringIO),
+                ):
+                    exit_code = main([
+                        "localhost",
+                        "--preset", preset,
+                    ])
+                self.assertEqual(exit_code, 0)
+                scan.assert_awaited_once()
+                self.assertEqual(
+                    scan.call_args.kwargs["ports"],
+                    expected_ports,
+                )
+
+    def test_rejects_ports_and_preset_together(self):
+        with (
+            patch("recon.cli.scan", new_callable=AsyncMock) as scan,
+            patch("sys.stderr", new_callable=io.StringIO) as errors,
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                main([
+                    "localhost",
+                    "--ports", "22",
+                    "--preset", "web",
+                ])
+        self.assertEqual(raised.exception.code, 2)
+        scan.assert_not_called()
+        self.assertIn("not allowed with argument", errors.getvalue())
+
