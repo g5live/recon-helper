@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 if TYPE_CHECKING:
     from recon.scanner import ScanReport
@@ -145,3 +146,13 @@ def render(report: ScanReport, output_format: str) -> str:
     }
     formatter = formatters.get(output_format.lower(), render_text)
     return formatter(report)
+
+def write_report(
+    report: ScanReport,
+    path: Path,
+    output_format: str,
+) -> None:
+    """Save a report without overwriting an existing file."""
+    content = render(report, output_format) + "\n"
+    with path.open("x", encoding="utf-8") as output_file:
+        output_file.write(content)

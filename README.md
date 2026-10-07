@@ -73,6 +73,25 @@ This narrow rule can miss FTP servers that do not explicitly name
 FTP in their greeting. Banner identification does not verify the
 advertised software, version or authenticity and adds no network requests.
 
+### File export
+
+Save JSON or text findings to a new file:
+```bash
+python recon.py localhost --preset web -oJ results.json
+python recon.py localhost --preset remote -oT results.txt
+```
+
+Use either `-oJ` / `--output-json` or `-oT` / `--output-text`.
+The option determines the file format; terminal output still follows
+`--format`.
+
+Existing files are not overwritten. Parent directories must already
+exist. An export failure is logged to stderr and returns exit code 1;
+findings are still printed to stdout.
+
+Exports contain the completed report. Saving partial results after
+interruption is not yet implemented.
+
 ## Current Features
 
 - Native hostname, URL, IP and CIDR input, including interactive target/port prompts
@@ -91,6 +110,8 @@ advertised software, version or authenticity and adds no network requests.
 - Standard-library logging to stderr and optional log files
 - Graceful `SIGINT`/`Ctrl+C` exit status
 - Mocked unit tests covering input ingestion, limits, presets, SSH banner identification, scanning and output without live scans
+- SSH and explicit FTP banner identification.
+- Add direct JSON/text export, exclusive file creation and export-error handling.
 - Original web-enrichment workflow retained temporarily behind `--legacy`
 
 ## Examples
@@ -145,6 +166,7 @@ recon-helper/
 │   ├── output.py      # Text, table and JSON renderers
 │   └── legacy.py      # Temporary interactive enumeration workflow
 ├── tests/
+│   ├── test_export.py
 │   ├── test_interactive.py
 │   ├── test_protocols.py
 │   ├── test_scanner.py
@@ -180,7 +202,7 @@ Tests use `unittest.mock` to replace network connections and HTTP responses. The
 - Technology hints require confirmation; they are not definitive product or version identification.
 - Concurrency is bounded, but explicit rate limiting is not yet implemented.
 - Ctrl+C returns exit status 130; rendering or exporting partial findings is not yet implemented.
-- Results can be printed as text, table or JSON; direct output-file options are not yet implemented.
+- Results can be printed as text, table or JSON; table export and saving partial results remain pending.
 
 ### Planned Roadmap
 
@@ -207,8 +229,6 @@ Tests use `unittest.mock` to replace network connections and HTTP responses. The
    - Render or save partial results after Ctrl+C
    - Keep concurrency and rate limiting as separate controls
 5. Direct file export
-   - `-oJ results.json`
-   - `-oT results.txt`
    - Optional table export
    - Safe overwrite behaviour and useful exit codes
 6. UDP scanning
@@ -221,7 +241,7 @@ Tests use `unittest.mock` to replace network connections and HTTP responses. The
    - Timeouts, partial interruption, rate limiting, TLS and file exports
    - Broader output-schema regression coverage as fields are added
    - Consider pytest only if its fixtures and parameterisation add value; the current unittest suite remains valid
-   - Current checkpoint: 27 tests passing, including target-file ingestion, combined limits, presets and SSH banner/output checks
+   - Current checkpoint: 33 tests passing, including target-file ingestion, combined limits, presets and SSH banner/output checks
 8. Public release preparation
    - Versioning and changelog
    - Licence and contribution guidance

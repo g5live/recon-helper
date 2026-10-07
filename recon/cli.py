@@ -4,11 +4,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-from pathlib import Path
 import sys
-
+from pathlib import Path
 from recon.legacy import main as legacy_main
-from recon.output import render
+from recon.output import render, write_report
 from recon.scanner import TargetError, scan
 
 PORT_PRESETS: dict[str, tuple[int, ...]] = {
@@ -72,6 +71,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--engine", choices=("async", "socket"), default="async")
     parser.add_argument("--format", choices=("text", "table", "json"), default="text")
+    file_output = parser.add_mutually_exclusive_group()
+    file_output.add_argument(
+        "-oJ",
+        "--output-json",
+        type=Path,
+        help="save JSON results to a new file",
+    )
+    file_output.add_argument(
+        "-oT",
+        "--output-text",
+        type=Path,
+        help="save text results to a new file",
+    )
     parser.add_argument("--timeout", type=float, default=0.75)
     parser.add_argument("--banner-timeout", type=float, default=0.35)
     parser.add_argument(
@@ -173,6 +185,16 @@ def main(argv: list[str] | None = None) -> int:
         logging.getLogger(__name__).error("%s", error)
         return 2
     sys.stdout.write(render(report, args.format) + "\n")
+    try:
+        if args.output_json is not None:
+            write_report(report, args.output_json, "json")
+        elif args.output_text is not None:
+            write_report(report, args.output_text, "text")
+    except OSError as error:
+        logging.getLogger(__name__).error(
+            "could not save report: %s", error
+        )
+        return 1
     return 0
 
 if __name__ == "__main__":
