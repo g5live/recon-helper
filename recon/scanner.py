@@ -19,7 +19,7 @@ from recon.protocols import (
     socket_probe,
     web_url,
 )
-
+from recon.tls import TLSFinding, inspect_tls
 LOGGER = logging.getLogger(__name__)
 
 class TargetError(ValueError):
@@ -34,6 +34,7 @@ class PortFinding:
     url: str | None = None
     web: WebFinding | None = None
     detected_service: str | None = None
+    tls: TLSFinding | None = None
 
 @dataclass(frozen=True, slots=True)
 class HostScan:
@@ -141,6 +142,8 @@ async def scan_port(
     semaphore: asyncio.Semaphore,
     inspect_http: bool = False,
     http_timeout: float = 5.0,
+    inspect_tls_enabled: bool = False,
+    tls_timeout: float = 3.0,
 ) -> PortFinding | None:
     async with semaphore:
         try:
@@ -160,14 +163,22 @@ async def scan_port(
 
     endpoint = web_url(target, port)
     web = None
-
     if inspect_http and endpoint:
         try:
             async with semaphore:
                 web = await asyncio.to_thread(inspect_url, endpoint, http_timeout)
         except RequestException as error:
             LOGGER.warning("HTTP inspection failed for %s: %s", endpoint, error)
-
+    tls = None
+    if inspect_tls_enabled and port in {443, 8443}:
+        async with semaphore:
+            tls = await asyncio.to_thread(
+                inspect_tls,
+                target,
+                address,
+                port,
+                tls_timeout,
+            )
     return PortFinding(
         port=port,
         service=service_name(port),
@@ -176,6 +187,7 @@ async def scan_port(
         detected_service=detect_banner_service(banner),
         url=endpoint,
         web=web,
+        tls=tls,
     )
 
 async def scan_host(
@@ -188,6 +200,8 @@ async def scan_host(
     semaphore: asyncio.Semaphore,
     inspect_http: bool,
     http_timeout: float,
+    inspect_tls_enabled: bool = False,
+    tls_timeout: float = 3.0,
 ) -> HostScan:
     try:
         address = await resolve_target(target)
@@ -206,6 +220,8 @@ async def scan_host(
             semaphore=semaphore,
             inspect_http=inspect_http,
             http_timeout=http_timeout,
+            inspect_tls_enabled=inspect_tls_enabled,
+            tls_timeout=tls_timeout,
         ) for port in ports)
     )
     open_ports = tuple(sorted((finding for finding in findings if finding), key=lambda item: item.port))
@@ -221,19 +237,21 @@ async def scan(
     banner_timeout: float = 0.35,
     inspect_http: bool = False,
     http_timeout: float = 5.0,
+    inspect_tls_enabled: bool = False,
+    tls_timeout: float = 3.0,
     concurrency: int = 100,
     max_hosts: int = 256,
 ) -> ScanReport:
     if concurrency < 1:
         raise ValueError("concurrency must be at least 1")
-    if timeout <= 0 or banner_timeout <= 0 or http_timeout <= 0:
+    if any(value <= 0 for value in (
+            timeout, banner_timeout, http_timeout, tls_timeout,
+    )):
         raise ValueError("timeouts must be greater than zero")
-
     expanded = expand_targets(targets, max_hosts=max_hosts)
     clean_ports = tuple(sorted(set(ports)))
     if not clean_ports or any(port < 1 or port > 65535 for port in clean_ports):
         raise ValueError("ports must be between 1 and 65535")
-
     LOGGER.info("starting %s scan: %s target(s), %s port(s)", engine, len(expanded), len(clean_ports))
     started_at = datetime.now(UTC).isoformat()
     started = time.perf_counter()
@@ -248,8 +266,11 @@ async def scan(
             semaphore=semaphore,
             inspect_http=inspect_http,
             http_timeout=http_timeout,
+            inspect_tls_enabled=inspect_tls_enabled,  # <-- Added
+            tls_timeout=tls_timeout,                  # <-- Added
         ) for target in expanded)
     )
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
     LOGGER.info("scan complete in %.2f ms", duration_ms)
     return ScanReport(tuple(targets), engine, clean_ports, started_at, duration_ms, tuple(hosts))
+

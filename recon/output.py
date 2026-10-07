@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 from pathlib import Path
-
 if TYPE_CHECKING:
     from recon.scanner import ScanReport
     from recon.web import WebFinding
+    from recon.tls import TLSFinding
 
 def render_json(report: ScanReport) -> str:
     """Serialize the scan report to a formatted JSON string."""
@@ -63,6 +63,25 @@ def render_web_details(web: WebFinding, indent: str = "    ") -> list[str]:
             lines.append(f"{indent}robots error: {web.robots.error}")
     return lines
 
+def render_tls_details(
+    tls: TLSFinding,
+    indent: str = "    ",
+) -> list[str]:
+    if tls.error:
+        return [f"{indent}TLS inspection failed: {tls.error}"]
+    verification = (
+        "verified" if tls.certificate_verified else "not verified"
+    )
+    return [
+        f"{indent}TLS: {tls.version or '-'} | cipher: {tls.cipher or '-'}",
+        f"{indent}certificate: {verification}",
+        f"{indent}subject: {tls.subject or '-'}",
+        f"{indent}issuer: {tls.issuer or '-'}",
+        f"{indent}SAN DNS names: {', '.join(tls.san_hostnames) or '-'}",
+        f"{indent}valid from: {tls.valid_from or '-'}",
+        f"{indent}valid until: {tls.valid_until or '-'}",
+    ]
+
 def render_text(report: ScanReport) -> str:
     """Render human-readable text output with nested finding details."""
     lines: list[str] = [
@@ -94,6 +113,8 @@ def render_text(report: ScanReport) -> str:
                     lines.append(f"    url: {finding.url}")
                 if finding.web:
                     lines.extend(render_web_details(finding.web))
+                if finding.tls:
+                    lines.extend(render_tls_details(finding.tls))
                 if finding.banner:
                     lines.append(f"    banner: {finding.banner}")
     return "\n".join(lines)
@@ -101,7 +122,7 @@ def render_text(report: ScanReport) -> str:
 def render_table(report: ScanReport) -> str:
     headings = (
         "TARGET", "ADDRESS", "PORT", "HINT",
-        "DETECTED", "LATENCY", "HTTP", "URL",
+        "DETECTED", "LATENCY", "HTTP", "TLS", "URL",
     )
     rows = [
         (
@@ -112,6 +133,10 @@ def render_table(report: ScanReport) -> str:
             finding.detected_service or "-",
             f"{finding.latency_ms:.2f} ms",
             str(finding.web.status) if finding.web else "-",
+            (
+                "error" if finding.tls.error
+                else finding.tls.version or "-"
+            ) if finding.tls else "-",
             getattr(finding, "url", None) or "-",
         )
         for host in report.hosts
@@ -123,12 +148,10 @@ def render_table(report: ScanReport) -> str:
         max(len(headings[index]), *(len(row[index]) for row in rows))
         for index in range(len(headings))
     ]
-
     def format_row(row_values: tuple[str, ...]) -> str:
         return "  ".join(
             value.ljust(widths[index]) for index, value in enumerate(row_values)
         )
-
     return "\n".join(
         (
             format_row(headings),

@@ -2,9 +2,13 @@
 
 # Recon Helper
 
-Recon Helper is a learning-focused Python command-line project for authorised TCP reconnaissance. It accepts hostnames, URLs, individual addresses and bounded CIDR networks, then returns structured evidence rather than treating an open port as a vulnerability.
+A Python tool I'm building to support my cybersecurity and pentesting learning. It checks selected TCP ports, gathers service clues and helps me decide what to investigate next.
 
-## Install
+**Build · Understand · Apply:** build something useful, understand what the results mean, then apply that knowledge in a lab.
+
+Only use it on systems you own or have permission to test. An open port is a starting point for investigation, not proof of a vulnerability.
+
+## Get started
 
 ```bash
 git clone https://github.com/g5live/recon-helper.git
@@ -13,256 +17,76 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
 ```
-Only run reconnaissance against systems you own or have explicit permission to test.
 
-### Target files
-
-Use `-iL` or `--target-file` to read targets from a UTF-8 file:
-```bash
-python recon.py -iL targets.txt --ports 22,80,443
-```
-
-Place one target per line. Blank lines and lines beginning with `#`
-are ignored. Targets can be IP addresses, hostnames, URLs or CIDRs.
-
-Command-line targets can be combined with file targets:
+Run `python recon.py` for target and port prompts, or pass your choices directly. In PyCharm, run `recon.py` using the project's virtual environment. Type `q` at the target prompt to quit.
 
 ```bash
-python recon.py localhost -iL targets.txt --ports 22,80
+# Check selected ports and show a table
+python recon.py 127.0.0.1 --ports 22,80,443 --format table
+
+# Read targets from a file and save JSON
+python recon.py -iL targets.txt --preset web -oJ results.json
+
+# Add HTTP and TLS inspection on an authorised lab target
+python recon.py lab.example --preset web --http --tls
 ```
 
-Both sources use the same normalisation, deduplication and CIDR
-expansion logic. The default limit is 256 unique expanded targets
-across both sources; change it deliberately with `--max-hosts`.
+The installed `recon-helper` command accepts the same options. Use `python recon.py --help` for the full list.
 
-CIDRs expand incrementally so oversized ranges are rejected without
-first collecting every address.
+## Choose targets, ports and output
 
-Unreadable files, or files containing no targets when no command-line
-targets are supplied, return exit code 2 without starting a scan.
+| Choice | How it works |
+|---|---|
+| Targets | IP addresses, hostnames, URLs or CIDR ranges; URLs supply the hostname, while ports are selected separately |
+| Target files | `-iL targets.txt` / `--target-file`; one target per line, with blanks and full-line `#` comments ignored |
+| Combined targets | CLI and file entries are combined, duplicates removed and CIDRs expanded as needed |
+| Host limit | Default: 256 unique expanded targets across all inputs; change deliberately with `--max-hosts` |
+| Custom ports | `--ports 22,80,8000-8010` |
+| Presets | `--preset web`: 80, 443, 8080, 8443; `--preset remote`: 22, 23, 3389 |
+| Terminal output | `--format text`, `table` or `json` |
+| File export | `-oJ results.json` or `-oT results.txt`; independent of terminal format |
 
-### Port presets
+Use either custom ports or a preset. With neither, the tool uses its default port set. Presets are small convenience lists and do not enable HTTP or TLS inspection.
 
-Select a small named TCP port set:
+Exports create new files only; existing files are never overwritten and parent directories must exist. If saving fails, terminal findings remain available.
+
+## Read the results
+
+**Port hints and banners:** `HINT` / `service` is the usual service associated with that port. `DETECTED` / `detected_service` records supported banner evidence: SSH identification lines or `220` greetings explicitly naming FTP. Generic greetings remain unidentified. The captured banner is kept alongside the result; advertised software and versions still need checking.
+
+**HTTP (`--http`):** adds requests to collect status, redirects, page title, selected headers, security-header observations and `robots.txt` paths. Technology clues are observations to follow up, not verified product identification.
+
+**TLS (`--tls`):** adds a connection to open ports 443 and 8443. Successful verification records the TLS version, cipher, certificate subject/issuer, certificate DNS names and validity dates. Verification uses default trusted certificates and checks the target name or IP. Certificate failures, including self-signed lab certificates, are recorded without discarding the open-port finding. Use `--tls-timeout 3` to set the socket-operation timeout, not a whole-inspection deadline.
+
+Text and JSON show detailed findings; the table gives a compact view. Logs go to stderr, or a file with `--log-file recon.log`, separately from result output.
+
+## Current limits
+
+- TCP only. UDP and `--top-ports` are not implemented.
+- SSH/FTP banner recognition is limited and does not authenticate the service. FTP banners that omit the word FTP can be missed.
+- TLS inspection supports ports 443/8443 only. STARTTLS, unverified certificate details and days-until-expiry calculations remain pending.
+- Concurrency is limited; connection rate is not yet controlled separately.
+- Ctrl+C stops the run; partial findings are not yet displayed or exported.
+- File export supports text and JSON; direct table export remains pending.
+
+Exit codes: **0** completed or normal prompt exit; **1** export failed; **2** invalid input; **130** interrupted with Ctrl+C.
+
+## Next steps
+
+- Add rate controls and preserve results after interruption.
+- Broaden service checks and TLS coverage.
+- Add sourced top-port selections and table export.
+- Build UDP scanning as a separate engine.
+- Expand edge-case tests and prepare releases: changelog, licence, contribution guidance, CI and clean installation checks.
+
+## Development and tests
+
+The main flow is **input → scan → findings → output**. The code separates CLI handling, scanning, protocol clues, HTTP/TLS inspection and formatting so each part can be understood and tested.
+
 ```bash
-python recon.py localhost --preset web
-python recon.py localhost --preset remote
+python -m unittest discover -s tests -v
 ```
 
-- `web`: 80, 443, 8080, 8443
-- `remote`: 22, 23, 3389
+The current checkpoint is **40 passing tests**. Tests simulate connections and responses; they do not scan live targets. The asynchronous engine is the default; `--engine socket` uses the comparison socket engine. The original web workflow remains available temporarily through `--legacy`.
 
-Presets select ports only; HTTP inspection still requires `--http`.
-These sets are not exhaustive, and port numbers do not confirm service identity.
-
-Use either `--preset` or `--ports`; supplying both is rejected.
-Without either option, the existing default port set is used.
-
-### Service hints and banner identification
-
-The separate `detected_service` field records identification from
-supported banner patterns, independently of the port number.
-
-SSH identification banners are recognised. FTP identification
-requires a `220` greeting line whose text explicitly includes the
-standalone word `FTP`, case-insensitively. Generic `220` greetings
-remain unidentified because the code alone does not distinguish FTP
-from SMTP.
-
-This narrow rule can miss FTP servers that do not explicitly name
-FTP in their greeting. Banner identification does not verify the
-advertised software, version or authenticity and adds no network requests.
-
-### File export
-
-Save JSON or text findings to a new file:
-```bash
-python recon.py localhost --preset web -oJ results.json
-python recon.py localhost --preset remote -oT results.txt
-```
-
-Use either `-oJ` / `--output-json` or `-oT` / `--output-text`.
-The option determines the file format; terminal output still follows
-`--format`.
-
-Existing files are not overwritten. Parent directories must already
-exist. An export failure is logged to stderr and returns exit code 1;
-findings are still printed to stdout.
-
-Exports contain the completed report. Saving partial results after
-interruption is not yet implemented.
-
-## Current Features
-
-- Native hostname, URL, IP and CIDR input, including interactive target/port prompts
-- UTF-8 target files via `-iL targets.txt` or `--target-file`, with blank lines and full-line comments ignored
-- Shared normalisation and deduplication across CLI and file targets
-- Incremental CIDR expansion with a combined unique-target limit via `--max-hosts`
-- Bounded asynchronous scanning with `asyncio.open_connection()`
-- Optional threaded `socket.connect()` engine for comparison
-- Selectable ports/ranges or named `--preset web` and `--preset remote` sets; conflicting selections are rejected
-- Port-based service hints kept separate from SSH banner identification, including on nonstandard ports
-- Structured findings with `service` (port hint), `detected_service` and supporting `banner` evidence
-- Text, table and JSON output with separate service hints and detections
-- Opt-in HTTP inspection with status, redirects, title and response metadata
-- Context-aware security-header observations and structured `robots.txt` paths
-- Evidence-led technology hints from headers, generator metadata and HTML paths
-- Standard-library logging to stderr and optional log files
-- Graceful `SIGINT`/`Ctrl+C` exit status
-- Mocked unit tests covering input ingestion, limits, presets, SSH banner identification, scanning and output without live scans
-- SSH and explicit FTP banner identification.
-- Add direct JSON/text export, exclusive file creation and export-error handling.
-- Original web-enrichment workflow retained temporarily behind `--legacy`
-
-## Examples
-
-Interactive single-target scan:
-```bash
-recon-helper
-```
-
-Specific ports with table output:
-```bash
-recon-helper 192.0.2.10 --ports 22,80,443 --format table
-```
-
-Bounded lab network with JSON output:
-```bash
-recon-helper 192.0.2.0/29 --ports 22,80,443 --format json
-```
-
-Inspect discovered web services and preserve the evidence as JSON:
-```bash
-recon-helper 192.0.2.10 --ports 80,443,8080,8443 --http --format json
-```
-
-Compare the blocking socket implementation, safely dispatched through worker threads:
-```bash
-recon-helper 192.0.2.10 --engine socket --ports 22,80
-```
-
-Write operational logs separately from findings:
-```bash
-recon-helper 192.0.2.10 --log-level INFO --log-file recon.log --format json
-```
-
-Run the original interactive HTTP/technology checks:
-```bash
-recon-helper --legacy
-```
-
-Press `Ctrl+C` to send `SIGINT`; Recon Helper cancels the run and returns shell status `130`.
-
-## Structure
-
-```text
-recon-helper/
-├── recon/
-│   ├── __init__.py
-│   ├── cli.py         # Arguments, logging, SIGINT and entry point
-│   ├── scanner.py     # CIDR expansion and socket/async scanning
-│   ├── protocols.py   # Service metadata, probes and banner handling
-│   ├── web.py         # Structured HTTP inspection
-│   ├── output.py      # Text, table and JSON renderers
-│   └── legacy.py      # Temporary interactive enumeration workflow
-├── tests/
-│   ├── test_export.py
-│   ├── test_interactive.py
-│   ├── test_protocols.py
-│   ├── test_scanner.py
-│   └── test_target.py
-├── pyproject.toml
-└── README.md
-```
-
-The boundaries are deliberate:
-```text
-input → scanner → structured result → output renderer
-           │
-           └─ operational logging to stderr/file
-```
-
-This keeps machine-readable JSON free from progress messages and allows tests to verify decisions without scraping terminal text.
-
-## Test
-```bash
-python -m unittest discover -v
-```
-
-Tests use `unittest.mock` to replace network connections and HTTP responses. They verify CIDR expansion, safety limits, port parsing, both engines, HTTP inspection, renderers, JSON structure and SIGINT handling without touching external systems.
-
-## Current Limits and Next Stage
-
-- TCP only; UDP services require a separate scanner and protocol-specific logic.
-- `service` remains a port-based hint. Banner identification currently recognises SSH only; FTP and other protocol validation remain pending.
-- Banner identification does not verify the advertised software, version or authenticity. Missing or unrecognised banners leave `detected_service` unset.
-- Named presets are small convenience sets, not exhaustive discovery. `--top-ports` is not yet implemented.
-- TLS certificate inspection is not yet implemented.
-- HTTP inspection is deliberately opt-in with `--http` because it sends additional requests to discovered services; the `web` preset does not enable it.
-- Technology hints require confirmation; they are not definitive product or version identification.
-- Concurrency is bounded, but explicit rate limiting is not yet implemented.
-- Ctrl+C returns exit status 130; rendering or exporting partial findings is not yet implemented.
-- Results can be printed as text, table or JSON; table export and saving partial results remain pending.
-
-### Planned Roadmap
-
-1. Remaining target and port ingestion work
-   - Add `--top-ports 100` with a documented source and ordering for the port list
-   - Define its interaction with custom ports and named presets
-   - Extend input validation and edge-case coverage as needed
-   - Completed: target files, shared CLI/file processing, deduplication, incremental CIDR limits and web/remote presets
-2. Further service validation — next stage
-   - Implemented: SSH and explicit FTP banner identification. 
-   - Pending: broader FTP interpretation and bounded protocol-specific probes
-   - Keep port hints, detected protocols and supporting evidence separate
-   - Explicit `hinted_service` field with a documented compatibility plan for the existing `service` field
-   - Completed: SSH banner identification independent of port number, separate `detected_service` and banner evidence, and hint/detection labels in all output formats
-3. TLS inspection
-   - Certificate subject and issuer
-   - SAN hostnames
-   - Validity period and expiry
-   - TLS version and cipher observations
-   - Clear handling of self-signed lab certificates
-4. Rate and interruption controls
-   - Requests-per-second or connection-delay limits
-   - Preserve completed findings when interrupted
-   - Render or save partial results after Ctrl+C
-   - Keep concurrency and rate limiting as separate controls
-5. Direct file export
-   - Optional table export
-   - Safe overwrite behaviour and useful exit codes
-6. UDP scanning
-   - Separate UDP engine
-   - Protocol-specific probes for DNS, SNMP, NTP and TFTP
-   - Distinguish open, closed and open|filtered
-   - Conservative defaults because UDP scanning behaves differently from TCP
-7. Test expansion
-   - Additional parser edge cases and invalid inputs
-   - Timeouts, partial interruption, rate limiting, TLS and file exports
-   - Broader output-schema regression coverage as fields are added
-   - Consider pytest only if its fixtures and parameterisation add value; the current unittest suite remains valid
-   - Current checkpoint: 33 tests passing, including target-file ingestion, combined limits, presets and SSH banner/output checks
-8. Public release preparation
-   - Versioning and changelog
-   - Licence and contribution guidance
-   - CI test workflow
-   - Keep installation and usage examples current
-   - Verify supported Python versions
-   - Maintain clear authorised-use scope
-   - Build and installation testing in a clean environment
-
-### Shared brand and release preparation
-
-Part of the G5LIVE app family. See the [shared brand guide](assets/brand/BRAND.md) and [project-specific release-readiness review](docs/RELEASE_READINESS.md) for proposed functionality and public-release preparation.
-
-## Guided terminal start
-
-Run the main file without arguments:
-```bash
-cd ~/Projects/Pycharm/recon-helper
-.venv/bin/python recon.py
-```
-
-Enter your target IP, hostname, URL or CIDR at the Target address(es) prompt. Multiple targets can be separated with spaces. Press Enter at the ports prompt for the default common ports, or supply a list such as 22,80,443. Type q at the target prompt to exit.
-
-In PyCharm, run `recon.py` with no script parameters and use the project `.venv/bin/python` interpreter. Click in the Run console to type your answers. Ctrl+C cancels input. Existing argument-based usage and `--help` remain available.
+Part of the G5LIVE app family. See the [brand guide](assets/brand/BRAND.md) and [release-readiness notes](docs/RELEASE_READINESS.md).

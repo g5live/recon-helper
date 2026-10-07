@@ -92,10 +92,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="inspect discovered HTTP services",
     )
     parser.add_argument(
+        "--tls",
+        action="store_true",
+        help="inspect TLS on selected supported ports",
+    )
+    parser.add_argument(
         "--http-timeout",
         type=float,
         default=5.0,
         help="HTTP request timeout in seconds",
+    )
+    parser.add_argument(
+        "--tls-timeout",
+        type=float,
+        default=3.0,
+        help="TLS socket-operation timeout in seconds",
     )
     parser.add_argument("--concurrency", type=int, default=100)
     parser.add_argument("--max-hosts", type=int, default=256)
@@ -169,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         "banner_timeout": args.banner_timeout,
         "inspect_http": args.http,
         "http_timeout": args.http_timeout,
+        "inspect_tls_enabled": args.tls,
+        "tls_timeout": args.tls_timeout,
         "concurrency": args.concurrency,
         "max_hosts": args.max_hosts,
     }
