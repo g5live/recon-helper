@@ -11,7 +11,6 @@ def render_json(report: ScanReport) -> str:
     """Serialize the scan report to a formatted JSON string."""
     return json.dumps(report.to_dict(), indent=2)
 
-
 def render_web_details(web: WebFinding, indent: str = "    ") -> list[str]:
     """Render canonical HTTP evidence for text and legacy views."""
     lines = [
@@ -33,7 +32,6 @@ def render_web_details(web: WebFinding, indent: str = "    ") -> list[str]:
             f"{hint.source}: {hint.evidence}" for hint in web.technology_hints
         )
         lines.append(f"{indent}technology hints: {hints}")
-
     present_headers = [
         header.name
         for header in web.security_headers
@@ -52,7 +50,6 @@ def render_web_details(web: WebFinding, indent: str = "    ") -> list[str]:
         f"{indent}security headers missing: "
         + (", ".join(missing_headers) if missing_headers else "none observed")
     )
-
     if web.robots:
         status = web.robots.status if web.robots.status is not None else "request failed"
         lines.append(f"{indent}robots.txt: {status} | {web.robots.url}")
@@ -85,26 +82,33 @@ def render_text(report: ScanReport) -> str:
         else:
             for finding in host.open_ports:
                 lines.append(
-                    f"  {finding.port}/tcp open  {finding.service}  "
+                    f"  {finding.port}/tcp open  hint: {finding.service}  "
                     f"{finding.latency_ms:.2f} ms"
                 )
+                if finding.detected_service:
+                    lines.append(
+                        f"    banner identifies: {finding.detected_service}"
+                    )
                 if getattr(finding, "url", None):
                     lines.append(f"    url: {finding.url}")
                 if finding.web:
                     lines.extend(render_web_details(finding.web))
                 if finding.banner:
                     lines.append(f"    banner: {finding.banner}")
-
     return "\n".join(lines)
 
 def render_table(report: ScanReport) -> str:
-    headings = ("TARGET", "ADDRESS", "PORT", "SERVICE", "LATENCY", "HTTP", "URL")
+    headings = (
+        "TARGET", "ADDRESS", "PORT", "HINT",
+        "DETECTED", "LATENCY", "HTTP", "URL",
+    )
     rows = [
         (
             host.target,
             host.address or "-",
             str(finding.port),
             finding.service,
+            finding.detected_service or "-",
             f"{finding.latency_ms:.2f} ms",
             str(finding.web.status) if finding.web else "-",
             getattr(finding, "url", None) or "-",
@@ -114,7 +118,6 @@ def render_table(report: ScanReport) -> str:
     ]
     if not rows:
         return "No selected TCP ports responded."
-
     widths = [
         max(len(headings[index]), *(len(row[index]) for row in rows))
         for index in range(len(headings))

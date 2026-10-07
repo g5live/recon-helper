@@ -193,7 +193,6 @@ PRIORITY_LABELS = {
     4: "FURTHER EXPLORATION",
 }
 
-
 def service_name(port: int) -> str:
     """Return a readable service name without the legacy ``Type:`` prefix."""
     return TCP_SERVICES.get(port, "Type: Unknown").removeprefix("Type: ")
@@ -205,14 +204,11 @@ def web_url(hostname: str, port: int) -> str | None:
         8080: "http",
         8443: "https",
     }
-
     scheme = schemes.get(port)
     if scheme is None:
         return None
-
     if port in {80, 443}:
         return f"{scheme}://{hostname}"
-
     return f"{scheme}://{hostname}:{port}"
 
 def probe_payload(port: int, hostname: str) -> bytes:
@@ -224,6 +220,16 @@ def probe_payload(port: int, hostname: str) -> bytes:
         ).encode("ascii", errors="ignore")
     return b""
 
+def detect_banner_service(banner: str | None) -> str | None:
+    """Identify a supported service from its observed banner."""
+    if not banner:
+        return None
+    for line in banner.split(" | "):
+        if line.startswith(("SSH-2.0-", "SSH-1.99-", "SSH-1.5-")):
+            software = line.split("-", 2)[2].strip()
+            if software:
+                return "SSH"
+    return None
 
 def readable_banner(data: bytes) -> str | None:
     if not data:
@@ -233,7 +239,6 @@ def readable_banner(data: bytes) -> str | None:
         return f"binary/protocol response ({len(data)} bytes)"
     text = data.decode(errors="replace").strip().replace("\r", "")
     return " | ".join(line.strip() for line in text.splitlines() if line.strip())[:500]
-
 
 def socket_probe(
     address: str,

@@ -1,17 +1,18 @@
 """Structured CIDR expansion, resolution, and bounded TCP scanning."""
 from __future__ import annotations
-from requests import RequestException
 import asyncio
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 import ipaddress
 import logging
 import socket
 import time
+from requests import RequestException
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
 from recon.web import WebFinding, inspect_url
 from recon.protocols import (
     TCP_SERVICES,
+    detect_banner_service,
     probe_payload,
     readable_banner,
     service_name,
@@ -32,6 +33,7 @@ class PortFinding:
     banner: str | None = None
     url: str | None = None
     web: WebFinding | None = None
+    detected_service: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class HostScan:
@@ -39,7 +41,6 @@ class HostScan:
     address: str | None
     open_ports: tuple[PortFinding, ...]
     error: str | None = None
-
 
 @dataclass(frozen=True, slots=True)
 class ScanReport:
@@ -53,7 +54,6 @@ class ScanReport:
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
-
 def normalise_target(value: str) -> str:
     candidate = value.strip()
     if not candidate:
@@ -64,7 +64,6 @@ def normalise_target(value: str) -> str:
             raise TargetError(f"no hostname found in target: {value!r}")
         return hostname
     return candidate.rstrip("/")
-
 
 def expand_targets(values: list[str] | tuple[str, ...], max_hosts: int = 256) -> tuple[str, ...]:
     expanded: list[str] = []
@@ -104,7 +103,6 @@ async def resolve_target(target: str) -> str:
         raise socket.gaierror(f"no address returned for {target}")
     return next((address for address in addresses if ":" not in address), addresses[0])
 
-
 async def _async_probe(
     target: str,
     address: str,
@@ -131,7 +129,6 @@ async def _async_probe(
             await writer.wait_closed()
         except (ConnectionError, OSError):
             pass
-
 
 async def scan_port(
     target: str,
@@ -176,6 +173,7 @@ async def scan_port(
         service=service_name(port),
         latency_ms=round(latency_ms, 2),
         banner=banner,
+        detected_service=detect_banner_service(banner),
         url=endpoint,
         web=web,
     )
