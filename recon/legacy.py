@@ -24,16 +24,13 @@ def grab_banner(ip_address, port):
             data = sock.recv(1024)
             if not data:
                 return None
-
             readable_bytes = sum(
-                byte in range(32, 127) or byte in (9, 10, 13) for byte in data
-            )
+                byte in range(32, 127) or byte in (9, 10, 13) for byte in data)
             if readable_bytes / len(data) >= 0.85:
                 return data.decode(errors="replace").strip()
             return f"binary/protocol response received ({len(data)} bytes)"
     except (socket.timeout, OSError):
         return None
-
 
 def scan_tcp_ports(ip_address):
     open_ports = []
@@ -48,11 +45,9 @@ def scan_tcp_ports(ip_address):
             banner = grab_banner(ip_address, port)
             if banner:
                 print(f"banner: {banner}")
-
     if not open_ports:
         print("No TCP ports responded (closed, filtered, or not in scan list).")
     return open_ports
-
 
 def resolve_target(hostname):
     print("\n--- RESOLVING TARGET ---")
@@ -65,13 +60,11 @@ def resolve_target(hostname):
     print(f"IP address: {ip_address}")
     return ip_address
 
-
 def choose_web_url(hostname, open_ports):
     for port in (443, 8443, 80, 8080):
         if port in open_ports:
             return web_url(hostname, port)
     return None
-
 
 def robots_summary(web: WebFinding | None) -> str | None:
     if not web or not web.robots:
@@ -83,7 +76,6 @@ def robots_summary(web: WebFinding | None) -> str | None:
     if web.robots.disallowed_paths:
         return "Disallow: " + ", ".join(web.robots.disallowed_paths)
     return "robots.txt present; no non-empty Disallow paths observed"
-
 
 def enumeration_info(open_ports, robots_info):
     print("\n--- ENUMERATION PRIORITY ---")
@@ -103,26 +95,21 @@ def enumeration_info(open_ports, robots_info):
         if not found:
             print("None Found")
 
-
 def main():
     print("\n--- RUNNING RECON.PY ---")
     target_url = input("enter target host or URL: ").strip()
     if "://" not in target_url:
         target_url = "http://" + target_url
-
     hostname = urlsplit(target_url).hostname
     if hostname is None:
         print("[-] No valid hostname found")
         return
-
     ip_address = resolve_target(hostname)
     if ip_address is None:
         return
-
     open_ports = scan_tcp_ports(ip_address)
     endpoint = choose_web_url(hostname, open_ports)
     web = None
-
     print("\n--- STRUCTURED HTTP EVIDENCE ---")
     if endpoint is None:
         print("no HTTP/HTTPS service detected - skipping web checks")
@@ -134,10 +121,8 @@ def main():
         else:
             for line in render_web_details(web, indent=""):
                 print(line)
-
     enumeration_info(open_ports, robots_summary(web))
     print("\n--- RECON LOG END ---")
-
 
 if __name__ == "__main__":
     main()

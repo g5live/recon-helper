@@ -12,15 +12,7 @@ from datetime import UTC, datetime
 from collections.abc import Callable
 from urllib.parse import urlsplit
 from recon.web import WebFinding, inspect_url
-from recon.protocols import (
-    TCP_SERVICES,
-    detect_banner_service,
-    probe_payload,
-    readable_banner,
-    service_name,
-    socket_probe,
-    web_url,
-)
+from recon.protocols import TCP_SERVICES, detect_banner_service, probe_payload, readable_banner, service_name, socket_probe, web_url
 from recon.tls import TLSFinding, inspect_tls
 LOGGER = logging.getLogger(__name__)
 
@@ -79,7 +71,6 @@ class ProbePacer:
                 await asyncio.sleep(delay)
             self.next_start = loop.time() + self.interval
 
-
 @dataclass(slots=True)
 class HostProgress:
     target: str
@@ -93,7 +84,6 @@ class HostProgress:
         return HostScan(self.target, self.address,
                         tuple(self.findings[port] for port in sorted(self.findings)),
                         self.error, tuple(sorted(self.checked)), self.complete)
-
 
 def normalise_target(value: str) -> str:
     candidate = value.strip()
@@ -125,12 +115,10 @@ def expand_targets(values: list[str] | tuple[str, ...], max_hosts: int = 256) ->
                 expanded.append(target)
             if len(expanded) > max_hosts:
                 raise TargetError(
-                    f"target exceeds --max-hosts={max_hosts}; narrow the CIDR or raise the limit deliberately"
-                )
+                    f"target exceeds --max-hosts={max_hosts}; narrow the CIDR or raise the limit deliberately")
     if not expanded:
         raise TargetError("no usable targets supplied")
     return tuple(expanded)
-
 
 async def resolve_target(target: str) -> str:
     try:
@@ -207,8 +195,7 @@ async def scan_port(
                 loop = asyncio.get_running_loop()
                 latency_ms, banner = await asyncio.to_thread(
                     socket_probe, address, target, port, timeout, banner_timeout,
-                    on_connected=lambda latency: loop.call_soon_threadsafe(connected, latency),
-                )
+                    on_connected=lambda latency: loop.call_soon_threadsafe(connected, latency),)
             else:
                 raise ValueError(f"unsupported engine: {engine}")
         except (ConnectionError, OSError, TimeoutError):
@@ -218,7 +205,6 @@ async def scan_port(
             return None
 
     LOGGER.info("open: %s (%s) %s/tcp", target, address, port)
-
     endpoint = web_url(target, port)
     # Retain open-port/banner evidence before potentially slower enrichment.
     base = PortFinding(port, service_name(port), round(latency_ms, 2),
@@ -244,8 +230,7 @@ async def scan_port(
                 target,
                 address,
                 port,
-                tls_timeout,
-            )
+                tls_timeout,)
     finding = PortFinding(
         port=port,
         service=service_name(port),
@@ -254,8 +239,7 @@ async def scan_port(
         detected_service=detect_banner_service(banner),
         url=endpoint,
         web=web,
-        tls=tls,
-    )
+        tls=tls,)
     if state is not None:
         state.findings[port] = finding
     return finding

@@ -7,18 +7,10 @@ from recon.output import render_json, render_table, render_text
 
 class BannerDetectionTests(unittest.TestCase):
     def test_recognises_ssh_identification(self):
-        self.assertEqual(
-            detect_banner_service("SSH-2.0-OpenSSH_9.6"),
-            "SSH",
-        )
+        self.assertEqual(detect_banner_service("SSH-2.0-OpenSSH_9.6"),"SSH",)
 
     def test_recognises_ssh_after_greeting(self):
-        self.assertEqual(
-            detect_banner_service(
-                "Welcome to the lab | SSH-2.0-OpenSSH_9.6"
-            ),
-            "SSH",
-        )
+        self.assertEqual(detect_banner_service("Welcome to the lab | SSH-2.0-OpenSSH_9.6"),"SSH",)
 
     def test_leaves_unsupported_or_missing_banners_unidentified(self):
         banners = (
@@ -27,8 +19,7 @@ class BannerDetectionTests(unittest.TestCase):
             "220 Service ready",
             "HTTP/1.1 200 OK",
             "SSH-2.0-",
-            "Welcome to my SSH server",
-        )
+            "Welcome to my SSH server",)
         for banner in banners:
             with self.subTest(banner=banner):
                 self.assertIsNone(detect_banner_service(banner))
@@ -37,14 +28,10 @@ class BannerDetectionTests(unittest.TestCase):
         banners = (
             "220 Welcome to the FTP service",
             "220 ftp server ready",
-            "220-Welcome to the FTP service | 220 Ready",
-        )
+            "220-Welcome to the FTP service | 220 Ready",)
         for banner in banners:
             with self.subTest(banner=banner):
-                self.assertEqual(
-                    detect_banner_service(banner),
-                    "FTP",
-                )
+                self.assertEqual(detect_banner_service(banner),"FTP",)
 
     def test_leaves_ambiguous_or_unrelated_greetings_unidentified(self):
         banners = (
@@ -52,8 +39,7 @@ class BannerDetectionTests(unittest.TestCase):
             "220 mail.example ESMTP ready",
             "220 SFTP service ready",
             "Welcome to the FTP service",
-            "500 FTP service unavailable",
-        )
+            "500 FTP service unavailable",)
         for banner in banners:
             with self.subTest(banner=banner):
                 self.assertIsNone(detect_banner_service(banner))
@@ -65,19 +51,16 @@ class ServiceDetectionTests(unittest.IsolatedAsyncioTestCase):
             (22, None, None),
             (2121, "220 Welcome to the FTP service", "FTP"),
             (21, "220 Service ready", None),
-            (21, "220 mail.example ESMTP ready", None),
-        )
+            (21, "220 mail.example ESMTP ready", None),)
         for port, banner, expected in cases:
-            with self.subTest(port=port):
+            with (self.subTest(port=port)):
                 with patch(
                     "recon.scanner._async_probe",
                     new_callable=AsyncMock,
-                    return_value=(1.0, banner),
-                ) as probe:
+                    return_value=(1.0, banner),) as probe:
                     report = await scan(
                         ["127.0.0.1"],
-                        ports=(port,),
-                    )
+                        ports=(port,),)
                 probe.assert_awaited_once()
                 finding = report.hosts[0].open_ports[0]
                 self.assertEqual(finding.detected_service, expected)
@@ -87,22 +70,17 @@ class ServiceDetectionTests(unittest.IsolatedAsyncioTestCase):
                 if expected is not None:
                     self.assertIn(
                         f"banner identifies: {expected}",
-                        render_text(report),
-                    )
+                        render_text(report),)
                     row = render_table(report).splitlines()[2].split()
                     self.assertEqual(row[4], expected)
                     data = json.loads(render_json(report))
-                    self.assertEqual(
-                        data["hosts"][0]["open_ports"][0]["detected_service"],
-                        expected,
-                    )
+                    self.assertEqual(data["hosts"][0]["open_ports"][0]["detected_service"],expected,)
 
     async def test_outputs_separate_hint_from_detection(self):
         with patch(
             "recon.scanner._async_probe",
             new_callable=AsyncMock,
-            return_value=(1.0, None),
-        ):
+            return_value=(1.0, None),):
             report = await scan(["127.0.0.1"], ports=(22,))
         text = render_text(report)
         self.assertIn("hint: SSH", text)

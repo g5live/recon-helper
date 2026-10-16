@@ -30,141 +30,96 @@ ENUMERATION_INFO = {
     21: {
         "service": "FTP",
         "tools": ["ftp", "nmap"],
-        "checks": ["Banner/version", "Anonymous login", "Authentication", "Accessible files"]
-    },
-
+        "checks": ["Banner/version", "Anonymous login", "Authentication", "Accessible files"]},
     22: {
         "service": "SSH",
         "tools": ["ssh", "nmap", "Hydra"],
-        "checks": ["Banner/version", "Authentication methods", "Credentials"]
-    },
-
+        "checks": ["Banner/version", "Authentication methods", "Credentials"]},
     23: {
         "service": "Telnet",
         "tools": ["telnet", "nmap"],
-        "checks": ["Banner/version", "Authentication", "Clear-text communication"]
-    },
-
+        "checks": ["Banner/version", "Authentication", "Clear-text communication"]},
     25: {
         "service": "SMTP",
         "tools": ["nmap", "nc"],
-        "checks": ["Banner/version", "Mail server information", "Supported SMTP commands"]
-    },
-
+        "checks": ["Banner/version", "Mail server information", "Supported SMTP commands"]},
     53: {
         "service": "DNS",
         "tools": ["dig", "nslookup", "nmap"],
-        "checks": ["DNS records", "Nameservers", "Hostnames", "Zone transfer configuration"]
-    },
-
+        "checks": ["DNS records", "Nameservers", "Hostnames", "Zone transfer configuration"]},
     67: {
         "service": "DHCP Server",
         "tools": ["nmap", "Scapy"],
-        "checks": ["DHCP server", "Lease information", "Network configuration"]
-    },
-
+        "checks": ["DHCP server", "Lease information", "Network configuration"]},
     68: {
         "service": "DHCP Client",
         "tools": ["Scapy"],
-        "checks": ["DHCP client traffic", "Assigned network configuration"]
-    },
-
+        "checks": ["DHCP client traffic", "Assigned network configuration"]},
     69: {
         "service": "TFTP",
         "tools": ["tftp", "nmap"],
-        "checks": ["Accessible files", "Configuration files", "Read/write access"]
-    },
-
+        "checks": ["Accessible files", "Configuration files", "Read/write access"]},
     80: {
         "service": "HTTP",
         "tools": ["Browser", "Burp Suite", "Gobuster", "nmap"],
-        "checks": ["Headers", "Technologies", "Directories", "robots.txt", "Sitemap"]
-    },
-
+        "checks": ["Headers", "Technologies", "Directories", "robots.txt", "Sitemap"]},
     110: {
         "service": "POP3",
         "tools": ["nc", "nmap"],
-        "checks": ["Banner/version", "Authentication", "Capabilities"]
-    },
-
+        "checks": ["Banner/version", "Authentication", "Capabilities"]},
     143: {
         "service": "IMAP",
         "tools": ["nc", "nmap"],
-        "checks": ["Banner/version", "Authentication", "Capabilities"]
-    },
-
+        "checks": ["Banner/version", "Authentication", "Capabilities"]},
     161: {
         "service": "SNMP",
         "tools": ["snmpwalk", "snmpget", "nmap"],
-        "checks": ["SNMP version", "Exposed system information", "Community configuration"]
-    },
-
+        "checks": ["SNMP version", "Exposed system information", "Community configuration"]},
     162: {
         "service": "SNMP Trap",
         "tools": ["nmap", "tcpdump", "Wireshark"],
-        "checks": ["SNMP trap traffic", "Trap source", "Exposed system information"]
-    },
-
+        "checks": ["SNMP trap traffic", "Trap source", "Exposed system information"]},
     443: {
         "service": "HTTPS",
         "tools": ["Browser", "Burp Suite", "Gobuster", "nmap"],
-        "checks": ["TLS certificate", "Headers", "Technologies", "Directories", "robots.txt"]
-    },
-
+        "checks": ["TLS certificate", "Headers", "Technologies", "Directories", "robots.txt"]},
     445: {
         "service": "SMB",
         "tools": ["smbclient", "nmap"],
-        "checks": ["Shares", "Access permissions", "SMB version", "Host information"]
-    },
-
+        "checks": ["Shares", "Access permissions", "SMB version", "Host information"]},
     465: {
         "service": "SMTPS",
         "tools": ["openssl", "nmap"],
-        "checks": ["TLS certificate", "SMTP banner", "Authentication", "Capabilities"]
-    },
-
+        "checks": ["TLS certificate", "SMTP banner", "Authentication", "Capabilities"]},
     587: {
         "service": "SMTP Submission",
         "tools": ["openssl", "nmap"],
-        "checks": ["SMTP banner", "STARTTLS", "Authentication methods", "Capabilities"]
-    },
-
+        "checks": ["SMTP banner", "STARTTLS", "Authentication methods", "Capabilities"]},
     853: {
         "service": "DNS over TLS",
         "tools": ["openssl", "dig"],
-        "checks": ["TLS certificate", "DNS service", "Encrypted DNS configuration"]
-    },
-
+        "checks": ["TLS certificate", "DNS service", "Encrypted DNS configuration"]},
     989: {
         "service": "FTPS Data",
         "tools": ["openssl", "nmap"],
-        "checks": ["TLS configuration", "FTP service information"]
-    },
-
+        "checks": ["TLS configuration", "FTP service information"]},
     990: {
         "service": "FTPS Control",
         "tools": ["openssl", "ftp", "nmap"],
-        "checks": ["TLS certificate", "Banner/version", "Authentication", "Accessible files"]
-    },
-
+        "checks": ["TLS certificate", "Banner/version", "Authentication", "Accessible files"]},
     3389: {
         "service": "RDP",
         "tools": ["nmap", "xfreerdp"],
-        "checks": ["RDP availability", "TLS certificate", "Authentication requirements", "Host information"]
-    },
-
+        "checks": ["RDP availability", "TLS certificate", "Authentication requirements", "Host information"]},
     8080: {
         "service": "HTTP Alternate",
         "tools": ["Browser", "Burp Suite", "Gobuster", "nmap"],
-        "checks": ["Web application", "Headers", "Technologies", "Directories"]
-    },
-
+        "checks": ["Web application", "Headers", "Technologies", "Directories"]},
     8443: {
         "service": "HTTPS Alternate",
         "tools": ["Browser", "Burp Suite", "Gobuster", "nmap"],
-        "checks": ["Web application", "TLS certificate", "Headers", "Technologies", "Directories"]
-    }
-}
+        "checks": ["Web application", "TLS certificate", "Headers", "Technologies", "Directories"]}}
+
 PORT_PRIORITY = {
     80: 1,
     443: 1,
@@ -185,15 +140,13 @@ PORT_PRIORITY = {
     143: 3,
     465: 3,
     587: 3,
-    853: 3,
+    853: 3,}
 
-}
 PRIORITY_LABELS = {
     1: "HIGH PRIORITY - WEB ENUMERATION",
     2: "MEDIUM PRIORITY - REMOTE ACCESS",
     3: "LOW PRIORITY - EMAIL / DNS",
-    4: "FURTHER EXPLORATION",
-}
+    4: "FURTHER EXPLORATION",}
 
 def service_name(port: int) -> str:
     """Return a readable service name without the legacy ``Type:`` prefix."""
@@ -204,8 +157,7 @@ def web_url(hostname: str, port: int) -> str | None:
         80: "http",
         443: "https",
         8080: "http",
-        8443: "https",
-    }
+        8443: "https",}
     scheme = schemes.get(port)
     if scheme is None:
         return None

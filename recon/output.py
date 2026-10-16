@@ -153,8 +153,7 @@ def render_table(report: ScanReport) -> str:
         for finding in host.open_ports]
     for host in report.hosts:
         if not host.open_ports and (host.error or not host.complete):
-            rows.append((host.target, host.address or "-", "-", "-", "-", "-", "-", "-", "-",
-                         host.error or f"incomplete ({len(host.checked_ports)}/{len(report.ports)} TCP)"))
+            rows.append((host.target, host.address or "-", "-", "-", "-", "-", "-", "-", "-", host.error or f"incomplete ({len(host.checked_ports)}/{len(report.ports)} TCP)"))
     prefix = "INTERRUPTED — PARTIAL REPORT; unfinished checks are not negative findings.\n" if report.interrupted else ""
     if not rows:
         return prefix + "No selected TCP ports responded."

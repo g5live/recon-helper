@@ -2,7 +2,6 @@ import json
 import socket
 import unittest
 from unittest.mock import AsyncMock, MagicMock, call, patch
-
 from recon.cli import main, parse_ports
 from recon.output import render_json, render_table, render_text
 from recon.protocols import socket_probe, web_url
@@ -25,12 +24,10 @@ class TargetTests(unittest.TestCase):
             80: "http://lab.example",
             443: "https://lab.example",
             8080: "http://lab.example:8080",
-            8443: "https://lab.example:8443",
-        }
+            8443: "https://lab.example:8443",}
         for port, expected in cases.items():
             with self.subTest(port=port):
                 self.assertEqual(web_url("lab.example", port), expected)
-
         self.assertIsNone(web_url("lab.example", 22))
 
     @patch("recon.cli.asyncio.run", side_effect=KeyboardInterrupt)
@@ -46,10 +43,8 @@ class AsyncScannerTests(unittest.IsolatedAsyncioTestCase):
         writer = MagicMock()
         writer.drain = AsyncMock()
         writer.wait_closed = AsyncMock()
-
         with patch("recon.scanner.asyncio.open_connection", new=AsyncMock(return_value=(reader, writer))):
             report = await scan(["192.0.2.1"], ports=(22,), timeout=0.1, banner_timeout=0.1)
-
         finding = report.hosts[0].open_ports[0]
         self.assertEqual(finding.port, 22)
         self.assertEqual(finding.service, "SSH")
@@ -79,22 +74,15 @@ class AsyncScannerTests(unittest.IsolatedAsyncioTestCase):
             powered_by=None,
             response_size=512,
             response_time_ms=25.0,
-            redirects=0,
-        )
-
-        with (
-            patch(
+            redirects=0,)
+        with (patch(
                 "recon.scanner.asyncio.open_connection",
-                new=AsyncMock(return_value=(reader, writer)),
-            ),
-            patch("recon.scanner.inspect_url", return_value=web) as inspect,
-        ):
+                new=AsyncMock(return_value=(reader, writer)),),
+            patch("recon.scanner.inspect_url", return_value=web) as inspect,):
             report = await scan(
                 ["192.0.2.1"],
                 ports=(8080,),
-                inspect_http=True,
-            )
-
+                inspect_http=True,)
         finding = report.hosts[0].open_ports[0]
         self.assertEqual(finding.web, web)
         inspect.assert_called_once_with("http://192.0.2.1:8080", 5.0)
@@ -111,40 +99,30 @@ class WebInspectionTests(unittest.TestCase):
         response.text = (
             "<html><head><title>Lab Dashboard</title>"
             '<meta name="generator" content="WordPress 6.5">'
-            '</head><body><script src="/wp-content/app.js"></script></body></html>'
-        )
+            '</head><body><script src="/wp-content/app.js"></script></body></html>')
         response.content = response.text.encode()
         response.headers = {
             "Server": "nginx",
             "Content-Type": "text/html",
             "X-Powered-By": "PHP",
             "Strict-Transport-Security": "max-age=31536000",
-            "Content-Security-Policy": "default-src 'self'",
-        }
+            "Content-Security-Policy": "default-src 'self'",}
         response.elapsed.total_seconds.return_value = 0.125
         response.history = [MagicMock()]
         robots = MagicMock()
         robots.status_code = 200
         robots.text = "User-agent: *\nDisallow: /admin\nDisallow: /backups # private\n"
         get.side_effect = [response, robots]
-
         finding = inspect_url("http://lab.example", timeout=2.0)
-
         self.assertEqual(
             get.call_args_list,
             [
-                call(
-                    "http://lab.example",
+                call("http://lab.example",
                     timeout=2.0,
-                    headers={"User-Agent": "recon-helper/0.3"},
-                ),
-                call(
-                    "https://lab.example/robots.txt",
+                    headers={"User-Agent": "recon-helper/0.3"},),
+                call("https://lab.example/robots.txt",
                     timeout=2.0,
-                    headers={"User-Agent": "recon-helper/0.3"},
-                ),
-            ],
-        )
+                    headers={"User-Agent": "recon-helper/0.3"},),],)
         self.assertEqual(finding.status, 200)
         self.assertEqual(finding.final_url, "https://lab.example/dashboard")
         self.assertEqual(finding.title, "Lab Dashboard")
@@ -156,20 +134,15 @@ class WebInspectionTests(unittest.TestCase):
         hints = {(hint.source, hint.evidence) for hint in finding.technology_hints}
         self.assertIn(("X-Powered-By header", "PHP"), hints)
         self.assertIn(("meta generator", "WordPress 6.5"), hints)
-        self.assertIn(
-            ("HTML path", "WordPress-style wp-content path detected"), hints
-        )
+        self.assertIn(("HTML path", "WordPress-style wp-content path detected"), hints)
         headers = {header.name: header for header in finding.security_headers}
         self.assertTrue(headers["Strict-Transport-Security"].present)
         self.assertFalse(headers["X-Frame-Options"].present)
 
     def test_hsts_is_not_applicable_to_plain_http(self):
         findings = assess_security_headers({}, "http://lab.example")
-        hsts = next(
-            finding
-            for finding in findings
-            if finding.name == "Strict-Transport-Security"
-        )
+        hsts = next(finding for finding in findings
+            if finding.name == "Strict-Transport-Security")
         self.assertFalse(hsts.applicable)
         self.assertFalse(hsts.present)
 

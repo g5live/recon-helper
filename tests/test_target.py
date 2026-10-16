@@ -17,13 +17,10 @@ class TargetFileTests(unittest.TestCase):
                 "  127.0.0.1  \n"
                 "localhost\n"
                 "127.0.0.0/30\n",
-                encoding="utf-8",
-            )
+                encoding="utf-8",)
             targets = read_target_file(path)
-            self.assertEqual(
-                targets,
-                ["127.0.0.1", "localhost", "127.0.0.0/30"],
-            )
+            self.assertEqual(targets,["127.0.0.1", "localhost", "127.0.0.0/30"],)
+
     def test_combines_cli_and_file_targets(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "targets.txt"
@@ -31,19 +28,14 @@ class TargetFileTests(unittest.TestCase):
             with (
                 patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
                 patch("recon.cli.render", return_value="test report"),
-                patch("sys.stdout", new_callable=io.StringIO),
-            ):
+                patch("sys.stdout", new_callable=io.StringIO),):
                 exit_code = main([
                     "localhost",
                     "-iL", str(path),
-                    "--ports", "22",
-                ])
+                    "--ports", "22",])
             self.assertEqual(exit_code, 0)
             scan.assert_awaited_once()
-            self.assertEqual(
-                scan.call_args.args[0],
-                ["localhost", "127.0.0.1"],
-            )
+            self.assertEqual(scan.call_args.args[0],["localhost", "127.0.0.1"],)
             self.assertEqual(scan.call_args.kwargs["ports"], (22,))
 
     def test_missing_file_returns_error_without_scanning(self):
@@ -52,8 +44,7 @@ class TargetFileTests(unittest.TestCase):
                 with (
                     patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
                     patch("builtins.input") as prompt,
-                    patch("sys.stderr", new_callable=io.StringIO) as errors,
-                ):
+                    patch("sys.stderr", new_callable=io.StringIO) as errors,):
                     exit_code = main(["-iL", str(missing_path)])
                 self.assertEqual(exit_code, 2)
                 scan.assert_not_called()
@@ -69,76 +60,54 @@ class TargetFileTests(unittest.TestCase):
                     with (
                         patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
                         patch("builtins.input") as prompt,
-                        patch("sys.stderr", new_callable=io.StringIO) as errors,
-                    ):
+                        patch("sys.stderr", new_callable=io.StringIO) as errors,):
                         exit_code = main(["-iL", str(path)])
                     self.assertEqual(exit_code, 2)
                     scan.assert_not_called()
                     prompt.assert_not_called()
-                    self.assertIn(
-                        "no usable targets supplied",
-                        errors.getvalue(),
-                    )
+                    self.assertIn("no usable targets supplied",errors.getvalue(),)
 
     def test_large_cidr_stops_at_host_limit(self):
         with self.assertRaises(TargetError):
-            expand_targets(
-                ["2001:db8::/64"],
-                max_hosts=2,
-            )
+            expand_targets(["2001:db8::/64"], max_hosts=2,)
 
     def test_deduplicates_overlapping_targets(self):
-        targets = expand_targets(
-            ["192.0.2.1", "192.0.2.0/30", "192.0.2.2"],
-            max_hosts=2,
-        )
-        self.assertEqual(
-            targets,
-            ("192.0.2.1", "192.0.2.2"),
-        )
+        targets = expand_targets(["192.0.2.1", "192.0.2.0/30", "192.0.2.2"], max_hosts=2,)
+        self.assertEqual(targets,("192.0.2.1", "192.0.2.2"),)
 
     def test_host_limit_applies_across_combined_targets(self):
         with self.assertRaises(TargetError):
-            expand_targets(
-                ["192.0.2.1", "192.0.2.0/30", "192.0.2.3"],
-                max_hosts=2,
-            )
+            expand_targets(["192.0.2.1", "192.0.2.0/30", "192.0.2.3"], max_hosts=2,)
 
     def test_presets_reach_scanner(self):
         cases = {
             "web": (80, 443, 8080, 8443),
-            "remote": (22, 23, 3389),
-        }
+            "remote": (22, 23, 3389),}
 
         for preset, expected_ports in cases.items():
             with self.subTest(preset=preset):
                 with (
                     patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
                     patch("recon.cli.render", return_value="test report"),
-                    patch("sys.stdout", new_callable=io.StringIO),
-                ):
+                    patch("sys.stdout", new_callable=io.StringIO),):
                     exit_code = main([
                         "localhost",
-                        "--preset", preset,
-                    ])
+                        "--preset", preset,])
                 self.assertEqual(exit_code, 0)
                 scan.assert_awaited_once()
                 self.assertEqual(
                     scan.call_args.kwargs["ports"],
-                    expected_ports,
-                )
+                    expected_ports,)
 
     def test_rejects_ports_and_preset_together(self):
         with (
             patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
-            patch("sys.stderr", new_callable=io.StringIO) as errors,
-        ):
+            patch("sys.stderr", new_callable=io.StringIO) as errors,):
             with self.assertRaises(SystemExit) as raised:
                 main([
                     "localhost",
                     "--ports", "22",
-                    "--preset", "web",
-                ])
+                    "--preset", "web",])
         self.assertEqual(raised.exception.code, 2)
         scan.assert_not_called()
         self.assertIn("not allowed with argument", errors.getvalue())

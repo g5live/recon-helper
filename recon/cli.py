@@ -88,8 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-json",
         type=Path,
         metavar="FILE",
-        help="save JSON results to a new file",
-    )
+        help="save JSON results to a new file",)
     file_output.add_argument(
         "-oT",
         "--output-text",
@@ -196,8 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         "concurrency": args.concurrency,
         "max_hosts": args.max_hosts,
         "probe_rate": args.probe_rate,
-        "preserve_on_cancel": True,
-    }
+        "preserve_on_cancel": True,}
     if args.ports is not None:
         options["ports"] = args.ports
     elif args.preset is not None:

@@ -10,11 +10,9 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
-
 from recon.cli import main, parse_ports
 from recon.output import render_json, render_table, render_text, write_report
 from recon.scanner import ProbePacer, ScanReport, HostScan, PortFinding, scan
-
 
 class PacingTests(unittest.IsolatedAsyncioTestCase):
     async def test_spacing_does_not_accumulate_burst_credits(self):
@@ -48,7 +46,6 @@ class PacingTests(unittest.IsolatedAsyncioTestCase):
                 with self.subTest(timeout=name), self.assertRaises(ValueError):
                     await scan(['192.0.2.1'],**{name:float('nan')})
             probe.assert_not_called()
-
 
 class InterruptionTests(unittest.IsolatedAsyncioTestCase):
     async def test_partial_port_and_unstarted_host_are_not_negative_findings(self):
@@ -104,7 +101,6 @@ class InterruptionTests(unittest.IsolatedAsyncioTestCase):
             task=asyncio.create_task(scan(['192.0.2.1'],ports=(22,)))
             await started.wait();task.cancel()
             with self.assertRaises(asyncio.CancelledError):await task
-
 
 class ControlCliTests(unittest.TestCase):
     def report(self):

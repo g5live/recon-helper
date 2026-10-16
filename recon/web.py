@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
-
 import requests
 from bs4 import BeautifulSoup
-
 
 USER_AGENT = {"User-Agent": "recon-helper/0.3"}
 SECURITY_HEADERS = (
@@ -15,9 +13,7 @@ SECURITY_HEADERS = (
     "Content-Security-Policy",
     "X-Frame-Options",
     "Referrer-Policy",
-    "Permissions-Policy",
-)
-
+    "Permissions-Policy",)
 
 @dataclass(frozen=True, slots=True)
 class HeaderFinding:
@@ -25,7 +21,6 @@ class HeaderFinding:
     applicable: bool
     present: bool
     value: str | None
-
 
 @dataclass(frozen=True, slots=True)
 class RobotsFinding:
@@ -35,12 +30,10 @@ class RobotsFinding:
     disallowed_paths: tuple[str, ...]
     error: str | None = None
 
-
 @dataclass(frozen=True, slots=True)
 class TechnologyHint:
     source: str
     evidence: str
-
 
 @dataclass(frozen=True, slots=True)
 class WebFinding:
@@ -57,7 +50,6 @@ class WebFinding:
     security_headers: tuple[HeaderFinding, ...] = ()
     robots: RobotsFinding | None = None
 
-
 def assess_security_headers(
     headers: requests.structures.CaseInsensitiveDict[str] | dict[str, str],
     final_url: str,
@@ -71,7 +63,6 @@ def assess_security_headers(
         findings.append(HeaderFinding(name, applicable, bool(value), value))
     return tuple(findings)
 
-
 def detect_technology(
     headers: requests.structures.CaseInsensitiveDict[str] | dict[str, str],
     page_text: str,
@@ -82,20 +73,15 @@ def detect_technology(
     powered_by = headers.get("X-Powered-By")
     if powered_by:
         hints.append(TechnologyHint("X-Powered-By header", powered_by))
-
     generator = soup.find("meta", attrs={"name": "generator"})
     if generator:
         content = generator.get("content")
         if isinstance(content, str) and content.strip():
             hints.append(TechnologyHint("meta generator", content.strip()))
-
     if "wp-content" in page_text.lower():
         hints.append(
-            TechnologyHint("HTML path", "WordPress-style wp-content path detected")
-        )
-
+            TechnologyHint("HTML path", "WordPress-style wp-content path detected"))
     return tuple(hints)
-
 
 def inspect_robots(base_url: str, timeout: float) -> RobotsFinding:
     robots_url = urljoin(base_url, "/robots.txt")
@@ -113,20 +99,16 @@ def inspect_robots(base_url: str, timeout: float) -> RobotsFinding:
                 path = value.strip()
                 if path:
                     disallowed_paths.append(path)
-
     return RobotsFinding(
         url=robots_url,
         status=response.status_code,
         present=response.status_code == 200,
-        disallowed_paths=tuple(disallowed_paths),
-    )
-
+        disallowed_paths=tuple(disallowed_paths),)
 
 def inspect_url(url: str, timeout: float = 10.0) -> WebFinding:
     response = requests.get(url, timeout=timeout, headers=USER_AGENT)
     soup = BeautifulSoup(response.text, "html.parser")
     title = soup.title.get_text(strip=True) if soup.title else None
-
     return WebFinding(
         status=response.status_code,
         final_url=response.url,
@@ -139,5 +121,4 @@ def inspect_url(url: str, timeout: float = 10.0) -> WebFinding:
         redirects=len(response.history),
         technology_hints=detect_technology(response.headers, response.text, soup),
         security_headers=assess_security_headers(response.headers, response.url),
-        robots=inspect_robots(response.url, timeout),
-    )
+        robots=inspect_robots(response.url, timeout),)

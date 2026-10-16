@@ -104,10 +104,7 @@ class TLSInspectionTests(unittest.TestCase):
         with (
             patch("recon.tls.socket.create_connection"),
             patch("recon.tls.ssl.create_default_context") as create_context,
-            patch(
-                "recon.tls.certificate_days_remaining",
-                return_value=12,
-            ) as calculate_days,):
+            patch("recon.tls.certificate_days_remaining", return_value=12,) as calculate_days,):
             tls_connection = (
                 create_context.return_value
                 .wrap_socket.return_value
@@ -128,9 +125,7 @@ class TLSInspectionTests(unittest.TestCase):
             finding = inspect_tls("lab.example", "192.0.2.1", 443)
         self.assertFalse(finding.certificate_verified)
         self.assertIsNone(finding.version)
-        self.assertIn(
-            "certificate verification failed",
-            finding.error or "",)
+        self.assertIn("certificate verification failed", finding.error or "",)
 
     def test_records_connection_failure(self):
         with (
@@ -146,9 +141,7 @@ class TLSInspectionTests(unittest.TestCase):
     def test_rejects_nonpositive_timeout_before_connecting(self):
         for timeout in (0, -1):
             with self.subTest(timeout=timeout):
-                with patch(
-                    "recon.tls.socket.create_connection"
-                ) as connect:
+                with patch("recon.tls.socket.create_connection") as connect:
                     with self.assertRaises(ValueError):
                         inspect_tls(
                             "lab.example",
@@ -165,15 +158,13 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
             certificate_verified=True,)
         for enabled in (False, True):
             with self.subTest(enabled=enabled):
-                with (
-                    patch(
+                with (patch(
                         "recon.scanner._async_probe",
                         new_callable=AsyncMock,
                         return_value=(1.0, None),),
                     patch(
                         "recon.scanner.inspect_tls",
-                        return_value=expected,
-                    ) as inspect,):
+                        return_value=expected,) as inspect,):
                     report = await scan(
                         ["127.0.0.1"],
                         ports=(443,),
@@ -197,8 +188,7 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
             san_hostnames=("lab.example",),
             valid_from="Oct  1 00:00:00 2026 GMT",
             valid_until="Oct  1 00:00:00 2027 GMT",)
-        with (
-            patch(
+        with (patch(
                 "recon.scanner._async_probe",
                 new_callable=AsyncMock,
                 return_value=(1.0, None),),
@@ -228,15 +218,13 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
     async def test_tls_failure_preserves_open_port(self):
         failed_tls = TLSFinding(
             error="certificate verification failed: self-signed certificate")
-        with (
-            patch(
+        with (patch(
                 "recon.scanner._async_probe",
                 new_callable=AsyncMock,
                 return_value=(1.0, None),),
             patch(
                 "recon.scanner.inspect_tls",
-                return_value=failed_tls,
-            ) as inspect,):
+                return_value=failed_tls,) as inspect,):
             report = await scan(
                 ["127.0.0.1"],
                 ports=(443,),
