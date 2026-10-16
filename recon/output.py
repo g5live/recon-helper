@@ -1,6 +1,7 @@
 """Render structured scan results without coupling scanning to ``print()``."""
 from __future__ import annotations
 import json
+from recon.explain import explain_finding, explain_tls
 from typing import TYPE_CHECKING
 from pathlib import Path
 if TYPE_CHECKING:
@@ -17,48 +18,37 @@ def render_web_details(web: WebFinding, indent: str = "    ") -> list[str]:
     lines = [
         f"{indent}http: {web.status} | title: {web.title or '-'}",
         f"{indent}final url: {web.final_url}",
-        (
-            f"{indent}server: {web.server or '-'} | "
-            f"content type: {web.content_type or '-'}"
-        ),
-    ]
+        (f"{indent}server: {web.server or '-'} | "f"content type: {web.content_type or '-'}"),]
     if web.powered_by:
         lines.append(f"{indent}powered by: {web.powered_by}")
     lines.append(
         f"{indent}response: {web.response_size} bytes in "
-        f"{web.response_time_ms:.2f} ms | redirects: {web.redirects}"
-    )
+        f"{web.response_time_ms:.2f} ms | redirects: {web.redirects}")
     if web.technology_hints:
         hints = "; ".join(
-            f"{hint.source}: {hint.evidence}" for hint in web.technology_hints
-        )
+            f"{hint.source}: {hint.evidence}" for hint in web.technology_hints)
         lines.append(f"{indent}technology hints: {hints}")
     present_headers = [
         header.name
         for header in web.security_headers
-        if header.applicable and header.present
-    ]
+        if header.applicable and header.present]
     missing_headers = [
         header.name
         for header in web.security_headers
-        if header.applicable and not header.present
-    ]
+        if header.applicable and not header.present]
     lines.append(
         f"{indent}security headers present: "
-        + (", ".join(present_headers) if present_headers else "none observed")
-    )
+        + (", ".join(present_headers) if present_headers else "none observed"))
     lines.append(
         f"{indent}security headers missing: "
-        + (", ".join(missing_headers) if missing_headers else "none observed")
-    )
+        + (", ".join(missing_headers) if missing_headers else "none observed"))
     if web.robots:
         status = web.robots.status if web.robots.status is not None else "request failed"
         lines.append(f"{indent}robots.txt: {status} | {web.robots.url}")
         if web.robots.disallowed_paths:
             lines.append(
                 f"{indent}robots disallow: "
-                + ", ".join(web.robots.disallowed_paths)
-            )
+                + ", ".join(web.robots.disallowed_paths))
         if web.robots.error:
             lines.append(f"{indent}robots error: {web.robots.error}")
     return lines
@@ -69,9 +59,17 @@ def render_tls_details(
 ) -> list[str]:
     if tls.error:
         return [f"{indent}TLS inspection failed: {tls.error}"]
-    verification = (
-        "verified" if tls.certificate_verified else "not verified"
-    )
+    verification = ("verified" if tls.certificate_verified else "not verified")
+    if tls.days_remaining is None:
+        expiry_summary = "unknown"
+    elif tls.days_remaining < 0:
+        expiry_summary = "expiry date has passed"
+    elif tls.days_remaining == 0:
+        expiry_summary = "less than one day remaining"
+    elif tls.days_remaining == 1:
+        expiry_summary = "1 whole day remaining"
+    else:
+        expiry_summary = f"{tls.days_remaining} whole days remaining"
     return [
         f"{indent}TLS: {tls.version or '-'} | cipher: {tls.cipher or '-'}",
         f"{indent}certificate: {verification}",
@@ -80,35 +78,39 @@ def render_tls_details(
         f"{indent}SAN DNS names: {', '.join(tls.san_hostnames) or '-'}",
         f"{indent}valid from: {tls.valid_from or '-'}",
         f"{indent}valid until: {tls.valid_until or '-'}",
-    ]
+        f"{indent}certificate expiry: {expiry_summary}",]
 
-def render_text(report: ScanReport) -> str:
+def render_text(report: ScanReport, explain: bool = False) -> str:
     """Render human-readable text output with nested finding details."""
     lines: list[str] = [
         "RECON HELPER",
         f"engine: {report.engine}",
-        (
-            f"targets: {len(report.hosts)} | "
+        (   f"targets: {len(report.hosts)} | "
             f"ports per target: {len(report.ports)} | "
-            f"duration: {report.duration_ms} ms"
-        ),
-    ]
+            f"duration: {report.duration_ms} ms"),]
+    if report.interrupted:
+        lines.append("status: INTERRUPTED — partial report; unfinished checks are not negative findings")
+    if report.probe_rate is not None:
+        lines.append(f"TCP probe dispatch limit: {report.probe_rate:g}/second (HTTP/TLS inspection traffic excluded)")
     for host in report.hosts:
         lines.extend(("", f"{host.target} ({host.address or 'unresolved'})"))
+        if not host.complete:
+            lines.append(f"  incomplete: {len(host.checked_ports)}/{len(report.ports)} TCP checks observed; banner/HTTP/TLS work may remain")
         if host.error:
             lines.append(f"  error: {host.error}")
         elif not host.open_ports:
-            lines.append("  no selected TCP ports responded")
+            lines.append("  no open ports observed yet; unfinished checks remain" if not host.complete
+                         else "  no selected TCP ports responded")
         else:
             for finding in host.open_ports:
                 lines.append(
                     f"  {finding.port}/tcp open  hint: {finding.service}  "
-                    f"{finding.latency_ms:.2f} ms"
-                )
+                    f"{finding.latency_ms:.2f} ms")
+                if not finding.inspection_complete:
+                    lines.append("    inspection incomplete: open-port evidence retained; banner/HTTP/TLS work may remain")
                 if finding.detected_service:
                     lines.append(
-                        f"    banner identifies: {finding.detected_service}"
-                    )
+                        f"    banner identifies: {finding.detected_service}")
                 if getattr(finding, "url", None):
                     lines.append(f"    url: {finding.url}")
                 if finding.web:
@@ -117,15 +119,24 @@ def render_text(report: ScanReport) -> str:
                     lines.extend(render_tls_details(finding.tls))
                 if finding.banner:
                     lines.append(f"    banner: {finding.banner}")
+                if explain:
+                    guidance = explain_finding(finding)
+                    explanations = [guidance]
+                    tls_guidance = explain_tls(finding)
+                    if (tls_guidance is not None and tls_guidance != guidance):
+                        explanations.append(tls_guidance)
+                    for explanation in explanations:
+                        lines.extend((
+                            f"    What this means: {explanation.meaning}",
+                            f"    What we don't know yet: {explanation.uncertainty}",
+                            f"    What to check next: {explanation.next_check}",))
     return "\n".join(lines)
 
 def render_table(report: ScanReport) -> str:
     headings = (
         "TARGET", "ADDRESS", "PORT", "HINT",
-        "DETECTED", "LATENCY", "HTTP", "TLS", "URL",
-    )
-    rows = [
-        (
+        "DETECTED", "LATENCY", "HTTP", "TLS", "URL", "CHECKS",)
+    rows = [(
             host.target,
             host.address or "-",
             str(finding.port),
@@ -133,49 +144,54 @@ def render_table(report: ScanReport) -> str:
             finding.detected_service or "-",
             f"{finding.latency_ms:.2f} ms",
             str(finding.web.status) if finding.web else "-",
-            (
-                "error" if finding.tls.error
+            (   "error" if finding.tls.error
                 else finding.tls.version or "-"
             ) if finding.tls else "-",
             getattr(finding, "url", None) or "-",
-        )
+            "complete" if finding.inspection_complete else "pending",)
         for host in report.hosts
-        for finding in host.open_ports
-    ]
+        for finding in host.open_ports]
+    for host in report.hosts:
+        if not host.open_ports and (host.error or not host.complete):
+            rows.append((host.target, host.address or "-", "-", "-", "-", "-", "-", "-", "-",
+                         host.error or f"incomplete ({len(host.checked_ports)}/{len(report.ports)} TCP)"))
+    prefix = "INTERRUPTED — PARTIAL REPORT; unfinished checks are not negative findings.\n" if report.interrupted else ""
     if not rows:
-        return "No selected TCP ports responded."
+        return prefix + "No selected TCP ports responded."
     widths = [
         max(len(headings[index]), *(len(row[index]) for row in rows))
-        for index in range(len(headings))
-    ]
+        for index in range(len(headings))]
     def format_row(row_values: tuple[str, ...]) -> str:
         return "  ".join(
-            value.ljust(widths[index]) for index, value in enumerate(row_values)
-        )
-    return "\n".join(
-        (
-            format_row(headings),
-            format_row(tuple("-" * width for width in widths)),
-            *(format_row(row) for row in rows),
-        )
-    )
+            value.ljust(widths[index]) for index, value in enumerate(row_values))
+    table = "\n".join(
+        (format_row(headings),
+        format_row(tuple("-" * width for width in widths)),
+        *(format_row(row) for row in rows),))
+    unfinished = [f"{host.target}: {len(host.checked_ports)}/{len(report.ports)} TCP checks observed; host processing incomplete"
+                  for host in report.hosts if not host.complete and host.open_ports]
+    return prefix + table + ("\n" + "\n".join(unfinished) if unfinished else "")
 
-def render(report: ScanReport, output_format: str) -> str:
-    """Format selector supporting text, json, and table views."""
-    formatters = {
-        "json": render_json,
-        "table": render_table,
-        "text": render_text,
-    }
-    formatter = formatters.get(output_format.lower(), render_text)
-    return formatter(report)
+def render(
+    report: ScanReport,
+    output_format: str,
+    explain: bool = False,
+) -> str:
+    """Choose how to display the report."""
+    selected_format = output_format.lower()
+    if selected_format == "json":
+        return render_json(report)
+    if selected_format == "table":
+        return render_table(report)
+    return render_text(report, explain=explain)
 
 def write_report(
     report: ScanReport,
     path: Path,
     output_format: str,
+    explain: bool = False,
 ) -> None:
-    """Save a report without overwriting an existing file."""
-    content = render(report, output_format) + "\n"
+    """Save the report to a new file without replacing an existing file."""
+    content = render(report, output_format, explain=explain) + "\n"
     with path.open("x", encoding="utf-8") as output_file:
         output_file.write(content)

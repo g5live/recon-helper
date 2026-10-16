@@ -1,10 +1,57 @@
 import ssl
 import unittest
 import json
-from recon.output import render_json, render_table, render_text
+from recon.output import render_json, render_table, render_text, render_tls_details
 from unittest.mock import MagicMock, patch, AsyncMock
-from recon.tls import inspect_tls, TLSFinding
+from recon.tls import inspect_tls, TLSFinding, certificate_days_remaining
 from recon.scanner import scan
+from datetime import UTC, datetime
+
+class CertificateExpiryTests(unittest.TestCase):
+    def test_counts_whole_days_remaining(self):
+        now = datetime(2026, 10, 16, tzinfo=UTC)
+        result = certificate_days_remaining(
+            "Oct 18 12:00:00 2026 GMT",
+            now=now,)
+        self.assertEqual(result, 2)
+
+    def test_less_than_one_day_remaining(self):
+        now = datetime(2026, 10, 16, tzinfo=UTC)
+        result = certificate_days_remaining(
+            "Oct 16 12:00:00 2026 GMT",
+            now=now,)
+        self.assertEqual(result, 0)
+
+    def test_expiry_date_has_passed(self):
+        now = datetime(2026, 10, 16, tzinfo=UTC)
+        result = certificate_days_remaining(
+            "Oct 15 23:00:00 2026 GMT",
+            now=now,)
+        self.assertEqual(result, -1)
+
+    def test_missing_or_unreadable_dates(self):
+        for expiry_date in (None, "", "not a date"):
+            with self.subTest(expiry_date=expiry_date):
+                result = certificate_days_remaining(expiry_date)
+                self.assertIsNone(result)
+
+class CertificateExpiryOutputTests(unittest.TestCase):
+    def test_displays_expiry_in_plain_english(self):
+        cases = (
+            (None, "unknown"),
+            (-1, "expiry date has passed"),
+            (0, "less than one day remaining"),
+            (1, "1 whole day remaining"),
+            (12, "12 whole days remaining"),)
+        for days, expected in cases:
+            with self.subTest(days=days):
+                finding = TLSFinding(
+                    certificate_verified=True,
+                    days_remaining=days,)
+                output = "\n".join(render_tls_details(finding))
+                self.assertIn(
+                    f"certificate expiry: {expected}",
+                    output,)
 
 class TLSInspectionTests(unittest.TestCase):
     def test_records_verified_tls_version_and_cipher(self):
@@ -14,92 +61,83 @@ class TLSInspectionTests(unittest.TestCase):
         tls_connection.cipher.return_value = (
             "TLS_AES_256_GCM_SHA384",
             "TLSv1.3",
-            256,
-        )
-        tls_connection.getpeercert.return_value = {
-            "subject": (
-                (("commonName", "lab.example"),),
-            ),
-            "issuer": (
-                (("commonName", "Example Lab CA"),),
-            ),
-            "subjectAltName": (
-                ("DNS", "lab.example"),
+            256,)
+        tls_connection.getpeercert.return_value = {"subject": ((("commonName", "lab.example"),),),
+            "issuer": ((("commonName", "Example Lab CA"),), ),
+            "subjectAltName": (("DNS", "lab.example"),
                 ("DNS", "www.lab.example"),
-                ("IP Address", "192.0.2.1"),
-            ),
+                ("IP Address", "192.0.2.1"),),
             "notBefore": "Oct  1 00:00:00 2026 GMT",
-            "notAfter": "Oct  1 00:00:00 2027 GMT",
-        }
+            "notAfter": "Oct  1 00:00:00 2027 GMT",}
         with (
             patch("recon.tls.socket.create_connection") as connect,
-            patch("recon.tls.ssl.create_default_context") as create_context,
-        ):
+            patch("recon.tls.ssl.create_default_context") as create_context,):
             connect.return_value.__enter__.return_value = connection
             context = create_context.return_value
             context.wrap_socket.return_value.__enter__.return_value = (
-                tls_connection
-            )
+                tls_connection)
             finding = inspect_tls(
                 "lab.example",
                 "192.0.2.1",
                 443,
-                timeout=2.0,
-            )
+                timeout=2.0,)
         connect.assert_called_once_with(
             ("192.0.2.1", 443),
-            timeout=2.0,
-        )
+            timeout=2.0,)
         context.wrap_socket.assert_called_once_with(
             connection,
-            server_hostname="lab.example",
-        )
+            server_hostname="lab.example",)
         self.assertEqual(finding.version, "TLSv1.3")
         self.assertEqual(finding.cipher, "TLS_AES_256_GCM_SHA384")
         self.assertTrue(finding.certificate_verified)
         self.assertIsNone(finding.error)
         self.assertEqual(finding.subject, "commonName=lab.example")
         self.assertEqual(finding.issuer, "commonName=Example Lab CA")
-        self.assertEqual(
-            finding.san_hostnames,
-            ("lab.example", "www.lab.example"),
-        )
-        self.assertEqual(
-            finding.valid_from,
-            "Oct  1 00:00:00 2026 GMT",
-        )
-        self.assertEqual(
-            finding.valid_until,
-            "Oct  1 00:00:00 2027 GMT",
-        )
+        self.assertEqual(finding.san_hostnames,
+            ("lab.example", "www.lab.example"),)
+        self.assertEqual(finding.valid_from,
+            "Oct  1 00:00:00 2026 GMT",)
+        self.assertEqual(finding.valid_until,
+            "Oct  1 00:00:00 2027 GMT",)
+
+    def test_stores_calculated_days_remaining(self):
+        with (
+            patch("recon.tls.socket.create_connection"),
+            patch("recon.tls.ssl.create_default_context") as create_context,
+            patch(
+                "recon.tls.certificate_days_remaining",
+                return_value=12,
+            ) as calculate_days,):
+            tls_connection = (
+                create_context.return_value
+                .wrap_socket.return_value
+                .__enter__.return_value)
+            tls_connection.getpeercert.return_value = {
+                "notAfter": "Oct 28 00:00:00 2026 GMT",}
+            finding = inspect_tls("lab.example", "192.0.2.1", 443)
+        self.assertEqual(finding.days_remaining, 12)
+        calculate_days.assert_called_once_with(
+            "Oct 28 00:00:00 2026 GMT")
 
     def test_records_certificate_verification_failure(self):
         with (
             patch("recon.tls.socket.create_connection"),
-            patch("recon.tls.ssl.create_default_context") as create_context,
-        ):
+            patch("recon.tls.ssl.create_default_context") as create_context,):
             create_context.return_value.wrap_socket.side_effect = (
-                ssl.SSLCertVerificationError(
-                    1,
-                    "self-signed certificate",
-                )
-            )
+                ssl.SSLCertVerificationError(1, "self-signed certificate",))
             finding = inspect_tls("lab.example", "192.0.2.1", 443)
         self.assertFalse(finding.certificate_verified)
         self.assertIsNone(finding.version)
         self.assertIn(
             "certificate verification failed",
-            finding.error or "",
-        )
+            finding.error or "",)
 
     def test_records_connection_failure(self):
         with (
             patch("recon.tls.ssl.create_default_context"),
             patch(
                 "recon.tls.socket.create_connection",
-                side_effect=TimeoutError("connection timed out"),
-            ),
-        ):
+                side_effect=TimeoutError("connection timed out"),),):
             finding = inspect_tls("lab.example", "192.0.2.1", 443)
         self.assertFalse(finding.certificate_verified)
         self.assertIn("TLS connection failed", finding.error or "")
@@ -116,8 +154,7 @@ class TLSInspectionTests(unittest.TestCase):
                             "lab.example",
                             "192.0.2.1",
                             443,
-                            timeout=timeout,
-                        )
+                            timeout=timeout,)
                 connect.assert_not_called()
 
 class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
@@ -125,27 +162,23 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
         expected = TLSFinding(
             version="TLSv1.3",
             cipher="TLS_AES_256_GCM_SHA384",
-            certificate_verified=True,
-        )
+            certificate_verified=True,)
         for enabled in (False, True):
             with self.subTest(enabled=enabled):
                 with (
                     patch(
                         "recon.scanner._async_probe",
                         new_callable=AsyncMock,
-                        return_value=(1.0, None),
-                    ),
+                        return_value=(1.0, None),),
                     patch(
                         "recon.scanner.inspect_tls",
                         return_value=expected,
-                    ) as inspect,
-                ):
+                    ) as inspect,):
                     report = await scan(
                         ["127.0.0.1"],
                         ports=(443,),
                         inspect_tls_enabled=enabled,
-                        tls_timeout=2.0,
-                    )
+                        tls_timeout=2.0,)
                 finding = report.hosts[0].open_ports[0]
                 if enabled:
                     inspect.assert_called_once_with("127.0.0.1", "127.0.0.1", 443, 2.0, )
@@ -163,21 +196,17 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
             issuer="commonName=Example Lab CA",
             san_hostnames=("lab.example",),
             valid_from="Oct  1 00:00:00 2026 GMT",
-            valid_until="Oct  1 00:00:00 2027 GMT",
-        )
+            valid_until="Oct  1 00:00:00 2027 GMT",)
         with (
             patch(
                 "recon.scanner._async_probe",
                 new_callable=AsyncMock,
-                return_value=(1.0, None),
-            ),
-            patch("recon.scanner.inspect_tls", return_value=expected),
-        ):
+                return_value=(1.0, None),),
+            patch("recon.scanner.inspect_tls", return_value=expected),):
             report = await scan(
                 ["127.0.0.1"],
                 ports=(443,),
-                inspect_tls_enabled=True,
-            )
+                inspect_tls_enabled=True,)
         text = render_text(report)
         self.assertIn("TLS: TLSv1.3", text)
         self.assertIn("cipher: TLS_AES_256_GCM_SHA384", text)
@@ -198,24 +227,20 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tls_failure_preserves_open_port(self):
         failed_tls = TLSFinding(
-            error="certificate verification failed: self-signed certificate"
-        )
+            error="certificate verification failed: self-signed certificate")
         with (
             patch(
                 "recon.scanner._async_probe",
                 new_callable=AsyncMock,
-                return_value=(1.0, None),
-            ),
+                return_value=(1.0, None),),
             patch(
                 "recon.scanner.inspect_tls",
                 return_value=failed_tls,
-            ) as inspect,
-        ):
+            ) as inspect,):
             report = await scan(
                 ["127.0.0.1"],
                 ports=(443,),
-                inspect_tls_enabled=True,
-            )
+                inspect_tls_enabled=True,)
         inspect.assert_called_once()
         self.assertEqual(len(report.hosts[0].open_ports), 1)
         finding = report.hosts[0].open_ports[0]
@@ -223,10 +248,7 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(finding.tls, failed_tls)
         self.assertFalse(finding.tls.certificate_verified)
         self.assertIn("TLS inspection failed:", render_text(report))
-        self.assertIn(
-            "error",
-            render_table(report).splitlines()[2].split(),
-        )
+        self.assertIn("error", render_table(report).splitlines()[2].split(),)
         data = json.loads(render_json(report))
         tls = data["hosts"][0]["open_ports"][0]["tls"]
         self.assertEqual(tls["error"], failed_tls.error)

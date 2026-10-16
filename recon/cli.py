@@ -12,8 +12,7 @@ from recon.scanner import TargetError, scan
 
 PORT_PRESETS: dict[str, tuple[int, ...]] = {
     "web": (80, 443, 8080, 8443),
-    "remote": (22, 23, 3389),
-}
+    "remote": (22, 23, 3389),}
 
 def parse_ports(value: str) -> tuple[int, ...]:
     ports: set[int] = set()
@@ -23,7 +22,7 @@ def parse_ports(value: str) -> tuple[int, ...]:
             if "-" in part:
                 start_text, end_text = part.split("-", 1)
                 start, end = int(start_text), int(end_text)
-                if start > end:
+                if start < 1 or end > 65535 or start > end:
                     raise ValueError
                 ports.update(range(start, end + 1))
             else:
@@ -50,64 +49,77 @@ def read_target_file(path: Path) -> list[str]:
     return targets
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="G5LIVE Recon Helper — evidence-led TCP reconnaissance")
+    parser = argparse.ArgumentParser(
+        description="G5LIVE Recon Helper — gather useful clues from TCP services",
+        formatter_class=lambda prog: argparse.HelpFormatter(
+            prog,
+            max_help_position=36,
+            width=100,),)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=0.75,
+        metavar="SECONDS",
+        help="how long to wait for a TCP connection (default: 0.75 seconds)",)
     parser.add_argument("targets", nargs="*", help="hostname, URL, IP address, or CIDR network")
     parser.add_argument(
         "-iL",
         "--target-file",
         type=Path,
-        help="read targets from a file, one per line",
-    )
+        help="read targets from a file, one per line",)
     port_selection = parser.add_mutually_exclusive_group()
     port_selection.add_argument(
         "--ports",
         type=parse_ports,
-        help="comma-separated ports and ranges",
-    )
+        help="comma-separated ports and ranges",)
     port_selection.add_argument(
         "--preset",
         choices=PORT_PRESETS,
-        help="select a named port set",
-    )
+        help="select a named port set",)
     parser.add_argument("--engine", choices=("async", "socket"), default="async")
     parser.add_argument("--format", choices=("text", "table", "json"), default="text")
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="add plain-English guidance to text output and text exports",)
     file_output = parser.add_mutually_exclusive_group()
     file_output.add_argument(
         "-oJ",
         "--output-json",
         type=Path,
+        metavar="FILE",
         help="save JSON results to a new file",
     )
     file_output.add_argument(
         "-oT",
         "--output-text",
         type=Path,
-        help="save text results to a new file",
-    )
-    parser.add_argument("--timeout", type=float, default=0.75)
+        help="save text results to a new file",)
+    file_output.add_argument(
+        "-oA", "--output-table", type=Path,
+        help="save a compact table to a new file",)
+    parser.add_argument(
+        "--probe-rate", type=float,
+        help="maximum TCP probe dispatches per second across all hosts (not HTTP/TLS request rate)",)
     parser.add_argument("--banner-timeout", type=float, default=0.35)
     parser.add_argument(
         "--http",
         action="store_true",
-        help="inspect discovered HTTP services",
-    )
+        help="inspect discovered HTTP services",)
     parser.add_argument(
         "--tls",
         action="store_true",
-        help="inspect TLS on selected supported ports",
-    )
+        help="check TLS and certificate details on open ports 443 and 8443",)
     parser.add_argument(
         "--http-timeout",
         type=float,
         default=5.0,
-        help="HTTP request timeout in seconds",
-    )
+        help="HTTP request timeout in seconds",)
     parser.add_argument(
         "--tls-timeout",
         type=float,
         default=3.0,
-        help="TLS socket-operation timeout in seconds",
-    )
+        help="TLS socket-operation timeout in seconds", )
     parser.add_argument("--concurrency", type=int, default=100)
     parser.add_argument("--max-hosts", type=int, default=256)
     parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="WARNING")
@@ -123,8 +135,7 @@ def configure_logging(level: str, log_file: Path | None) -> None:
         level=getattr(logging, level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         handlers=handlers,
-        force=True,
-    )
+        force=True,)
 
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
@@ -184,6 +195,8 @@ def main(argv: list[str] | None = None) -> int:
         "tls_timeout": args.tls_timeout,
         "concurrency": args.concurrency,
         "max_hosts": args.max_hosts,
+        "probe_rate": args.probe_rate,
+        "preserve_on_cancel": True,
     }
     if args.ports is not None:
         options["ports"] = args.ports
@@ -197,18 +210,15 @@ def main(argv: list[str] | None = None) -> int:
     except (TargetError, ValueError) as error:
         logging.getLogger(__name__).error("%s", error)
         return 2
-    sys.stdout.write(render(report, args.format) + "\n")
+    sys.stdout.write(render(report, args.format, explain=args.explain) + "\n")
     try:
-        if args.output_json is not None:
-            write_report(report, args.output_json, "json")
-        elif args.output_text is not None:
-            write_report(report, args.output_text, "text")
+        if args.output_json is not None: write_report(report, args.output_json, "json")
+        elif args.output_text is not None: write_report(report, args.output_text, "text", explain=args.explain,)
+        elif args.output_table is not None: write_report(report, args.output_table, "table")
     except OSError as error:
-        logging.getLogger(__name__).error(
-            "could not save report: %s", error
-        )
-        return 1
-    return 0
+        logging.getLogger(__name__).error("could not save report: %s", error)
+        return 130 if report.interrupted else 1
+    return 130 if report.interrupted else 0
 
 if __name__ == "__main__":
     raise SystemExit(main())

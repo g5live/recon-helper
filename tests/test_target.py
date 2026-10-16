@@ -1,6 +1,7 @@
 import io
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from recon.cli import main, read_target_file
 from pathlib import Path
@@ -28,7 +29,7 @@ class TargetFileTests(unittest.TestCase):
             path = Path(directory) / "targets.txt"
             path.write_text("127.0.0.1\n", encoding="utf-8")
             with (
-                patch("recon.cli.scan", new_callable=AsyncMock) as scan,
+                patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
                 patch("recon.cli.render", return_value="test report"),
                 patch("sys.stdout", new_callable=io.StringIO),
             ):
@@ -49,7 +50,7 @@ class TargetFileTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 missing_path = Path(directory) / "missing.txt"
                 with (
-                    patch("recon.cli.scan", new_callable=AsyncMock) as scan,
+                    patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
                     patch("builtins.input") as prompt,
                     patch("sys.stderr", new_callable=io.StringIO) as errors,
                 ):
@@ -66,7 +67,7 @@ class TargetFileTests(unittest.TestCase):
                     path = Path(directory) / "targets.txt"
                     path.write_text(contents, encoding="utf-8")
                     with (
-                        patch("recon.cli.scan", new_callable=AsyncMock) as scan,
+                        patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
                         patch("builtins.input") as prompt,
                         patch("sys.stderr", new_callable=io.StringIO) as errors,
                     ):
@@ -112,7 +113,7 @@ class TargetFileTests(unittest.TestCase):
         for preset, expected_ports in cases.items():
             with self.subTest(preset=preset):
                 with (
-                    patch("recon.cli.scan", new_callable=AsyncMock) as scan,
+                    patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
                     patch("recon.cli.render", return_value="test report"),
                     patch("sys.stdout", new_callable=io.StringIO),
                 ):
@@ -129,7 +130,7 @@ class TargetFileTests(unittest.TestCase):
 
     def test_rejects_ports_and_preset_together(self):
         with (
-            patch("recon.cli.scan", new_callable=AsyncMock) as scan,
+            patch("recon.cli.scan", new_callable=AsyncMock, return_value=SimpleNamespace(interrupted=False)) as scan,
             patch("sys.stderr", new_callable=io.StringIO) as errors,
         ):
             with self.assertRaises(SystemExit) as raised:

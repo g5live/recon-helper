@@ -1,12 +1,12 @@
 # Release readiness — recon-helper
 
-Review date: 2 October 2026. Proposed work, not an implementation or release announcement.
+Updated: 16 October 2026. Release preparation remains pending.
 
 ## Appropriate next functionality
 
-- Add target-file ingestion and named port presets with clear host/port bounds.
-- Validate protocols rather than relying on port-number service hints; add bounded TLS/certificate inspection.
-- Add rate controls separate from concurrency, partial findings after interruption and direct structured exports.
+- Delivered: target files and bounded port presets.
+- Delivered: limited SSH/FTP banner recognition and verified TLS inspection on 443/8443. Broader coverage remains pending.
+- Delivered: TCP dispatch pacing, partial reports on first Ctrl+C, and text/table/JSON exports. See RUN_CONTROLS.md for scope and limitations.
 - Develop UDP as a separate engine with distinct result semantics, rather than treating it as TCP.
 
 ## Before a first public release

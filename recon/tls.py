@@ -2,8 +2,10 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypedDict, cast
+from datetime import UTC, datetime
 import socket
 import ssl
+import math
 
 CertificateName = tuple[tuple[tuple[str, str], ...], ...]
 class CertificateDetails(TypedDict, total=False):
@@ -24,15 +26,33 @@ class TLSFinding:
     valid_from: str | None = None
     valid_until: str | None = None
     error: str | None = None
+    days_remaining: int | None = None
+    verification_code: int | None = None
+    verification_message: str | None = None
 
 def format_certificate_name(
     name: CertificateName,) -> str | None:
     parts = [
         f"{key}={value}"
         for group in name
-        for key, value in group
-    ]
+        for key, value in group]
     return ", ".join(parts) or None
+
+def certificate_days_remaining(
+    valid_until: str | None,
+    *,
+    now: datetime | None = None,
+) -> int | None:
+    """Return whole days until expiry, or None if the date is unavailable."""
+    if not valid_until:
+        return None
+    try:
+        expiry_timestamp = ssl.cert_time_to_seconds(valid_until)
+    except (ValueError, OverflowError):
+        return None
+    current_time = now if now is not None else datetime.now(UTC)
+    seconds_remaining = expiry_timestamp - current_time.timestamp()
+    return math.floor(seconds_remaining / 86400)
 
 def inspect_tls(
     hostname: str,
@@ -55,35 +75,31 @@ def inspect_tls(
                 cipher = tls_connection.cipher()
                 certificate = cast(
                     CertificateDetails,
-                    tls_connection.getpeercert() or {},
-                )
+                    tls_connection.getpeercert() or {},)
                 san_hostnames = tuple(
                     value
                     for kind, value in certificate.get(
-                        "subjectAltName", ()
-                    )
-                    if kind == "DNS"
-                )
+                        "subjectAltName", ())
+                    if kind == "DNS")
                 return TLSFinding(
                     version=tls_connection.version(),
                     cipher=cipher[0] if cipher else None,
                     certificate_verified=True,
                     subject=format_certificate_name(
-                        certificate.get("subject", ())
-                    ),
+                        certificate.get("subject", ())),
                     issuer=format_certificate_name(
-                        certificate.get("issuer", ())
-                    ),
+                        certificate.get("issuer", ())),
                     san_hostnames=san_hostnames,
                     valid_from=certificate.get("notBefore"),
                     valid_until=certificate.get("notAfter"),
-                )
+                    days_remaining=certificate_days_remaining(
+                        certificate.get("notAfter")),)
     except ssl.SSLCertVerificationError as error:
         return TLSFinding(
-            error=f"certificate verification failed: {error}"
-        )
+            error=f"certificate verification failed: {error}",
+            verification_code=getattr(error, "verify_code", None),
+            verification_message=getattr(error, "verify_message", None),)
     except OSError as error:
         return TLSFinding(
-            error=f"TLS connection failed: {error}"
-        )
+            error=f"TLS connection failed: {error}")
 

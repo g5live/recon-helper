@@ -4,6 +4,7 @@ from __future__ import annotations
 import socket
 import time
 import re
+from collections.abc import Callable
 
 TCP_SERVICES = {
     21: "Type: FTP (control)",
@@ -251,6 +252,7 @@ def socket_probe(
     port: int,
     timeout: float,
     banner_timeout: float,
+    on_connected: Callable[[float], None] | None = None,
 ) -> tuple[float, str | None]:
     """Use blocking ``socket.connect()`` for the optional threaded scan engine."""
     family = socket.AF_INET6 if ":" in address else socket.AF_INET
@@ -259,6 +261,8 @@ def socket_probe(
         sock.settimeout(timeout)
         sock.connect((address, port))
         latency_ms = (time.perf_counter() - started) * 1000
+        if on_connected is not None:
+            on_connected(latency_ms)
         payload = probe_payload(port, hostname)
         if payload:
             sock.sendall(payload)
