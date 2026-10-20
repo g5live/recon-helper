@@ -175,6 +175,7 @@ async def scan_port(
     http_timeout: float = 5.0,
     inspect_tls_enabled: bool = False,
     tls_timeout: float = 3.0,
+    tls_ports: tuple[int, ...] = (443, 8443),
     pacer: ProbePacer | None = None,
     state: HostProgress | None = None,
 ) -> PortFinding | None:
@@ -223,7 +224,7 @@ async def scan_port(
     if state is not None and web is not None:
         state.findings[port] = replace(base, web=web)
     tls = None
-    if inspect_tls_enabled and port in {443, 8443}:
+    if inspect_tls_enabled and port in tls_ports:
         async with semaphore:
             tls = await asyncio.to_thread(
                 inspect_tls,
@@ -256,6 +257,7 @@ async def scan_host(
     http_timeout: float,
     inspect_tls_enabled: bool = False,
     tls_timeout: float = 3.0,
+    tls_ports: tuple[int, ...] = (443, 8443),
     pacer: ProbePacer | None = None,
     state: HostProgress | None = None,
 ) -> HostScan:
@@ -275,16 +277,11 @@ async def scan_host(
             target,
             address,
             port,
-            engine=engine,
-            timeout=timeout,
-            banner_timeout=banner_timeout,
-            semaphore=semaphore,
-            inspect_http=inspect_http,
-            http_timeout=http_timeout,
-            inspect_tls_enabled=inspect_tls_enabled,
-            tls_timeout=tls_timeout,
-            pacer=pacer,
-            state=state,
+            engine=engine, timeout=timeout, banner_timeout=banner_timeout,
+            semaphore=semaphore, inspect_http=inspect_http,
+            http_timeout=http_timeout, inspect_tls_enabled=inspect_tls_enabled,
+            tls_timeout=tls_timeout, tls_ports=tls_ports,
+            pacer=pacer, state=state,
         ) for port in ports)
     )
     state.complete = True
@@ -302,6 +299,7 @@ async def scan(
     http_timeout: float = 5.0,
     inspect_tls_enabled: bool = False,
     tls_timeout: float = 3.0,
+    tls_ports: tuple[int, ...] = (443, 8443),
     concurrency: int = 100,
     max_hosts: int = 256,
     probe_rate: float | None = None,
@@ -316,8 +314,7 @@ async def scan(
     if probe_rate is not None and (not math.isfinite(probe_rate) or probe_rate <= 0):
         raise ValueError("probe rate must be finite and greater than zero")
     if any(not math.isfinite(value) or value <= 0 for value in (
-            timeout, banner_timeout, http_timeout, tls_timeout,
-    )):
+            timeout, banner_timeout, http_timeout, tls_timeout,)):
         raise ValueError("timeouts must be greater than zero")
     expanded = expand_targets(targets, max_hosts=max_hosts)
     clean_ports = tuple(sorted(set(ports)))
@@ -334,7 +331,7 @@ async def scan(
         banner_timeout=banner_timeout, semaphore=semaphore,
         inspect_http=inspect_http, http_timeout=http_timeout,
         inspect_tls_enabled=inspect_tls_enabled, tls_timeout=tls_timeout,
-        pacer=pacer, state=state,
+        tls_ports=tls_ports, pacer=pacer, state=state,
     )) for state in states]
     interrupted = False
     try:

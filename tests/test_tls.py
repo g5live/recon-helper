@@ -151,6 +151,39 @@ class TLSInspectionTests(unittest.TestCase):
                 connect.assert_not_called()
 
 class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_custom_tls_port_selection(self):
+        expected = TLSFinding(
+            version="TLSv1.3",
+            certificate_verified=True,)
+        cases = (
+            (True, (9443,), True),
+            (True, (443, 8443), False),
+            (False, (9443,), False),)
+        for enabled, selected_ports, should_inspect in cases:
+            with self.subTest(enabled=enabled, tls_ports=selected_ports):
+                with (
+                    patch(
+                        "recon.scanner._async_probe",
+                        new_callable=AsyncMock,
+                        return_value=(1.0, None),),
+                    patch(
+                        "recon.scanner.inspect_tls",
+                        return_value=expected,
+                    ) as inspect,):
+                    report = await scan(
+                        ["127.0.0.1"],
+                        ports=(9443,),
+                        inspect_tls_enabled=enabled,
+                        tls_ports=selected_ports,)
+                finding = report.hosts[0].open_ports[0]
+                self.assertEqual(finding.port, 9443)
+                if should_inspect:
+                    inspect.assert_called_once_with(
+                        "127.0.0.1", "127.0.0.1", 9443, 3.0,)
+                    self.assertEqual(finding.tls, expected)
+                else:
+                    inspect.assert_not_called()
+                    self.assertIsNone(finding.tls)
     async def test_tls_inspection_is_opt_in(self):
         expected = TLSFinding(
             version="TLSv1.3",
