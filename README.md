@@ -34,9 +34,6 @@ python recon.py lab.example --preset web --http --tls
 
 # Add explanations and inspect TLS certificates
 python recon.py localhost --ports 8443 --tls --explain
-
-# Inspect TLS on a custom lab port
-python recon.py localhost --ports 9443 --tls --tls-ports 9443
 ```
 
 The installed `recon-helper` command accepts the same options. Use `python recon.py --help` for the full list.
@@ -65,9 +62,7 @@ Exports create new files only; existing files are never overwritten and parent d
 
 **HTTP (`--http`):** adds requests to collect status, redirects, page title, selected headers, security-header observations and `robots.txt` paths. Technology clues are observations to follow up, not verified product identification.
 
-**TLS (`--tls`):** checks TLS on selected open ports, using 443 and 8443 by default. Use `--tls-ports` to replace that selection, for example `--tls-ports 443,8443,9443`. This does not add ports to the TCP scan: include them in `--ports` or select a suitable preset. TLS inspection still requires `--tls`.
-
-Records TLS version, cipher, certificate subject and issuer, DNS and IP subject alternative names (SANs), validity dates and whole days remaining before expiry when verification succeeds.
+**TLS (`--tls`):** checks TLS on open ports 443 and 8443. Records TLS version, cipher and certificate details when verification succeeds, including the number of whole days remaining before expiry.
 
 Verification checks certificate trust, validity and whether the certificate matches the target hostname or IP address. Failures are recorded without discarding the open-port finding. Certificate dates may be unavailable when verification fails.
 
@@ -79,7 +74,7 @@ Text and JSON show detailed findings; the table gives a compact view. Logs go to
 
 - TCP only. UDP and `--top-ports` are not implemented.
 - SSH/FTP banner recognition is limited and does not authenticate the service. FTP banners that omit the word FTP can be missed.
-- TLS inspection attempts a direct TLS connection on selected ports. STARTTLS and unverified certificate details remain pending.
+- TLS inspection supports ports 443/8443 only. STARTTLS and unverified certificate details remain pending.
 - Probe pacing covers TCP dispatches only; optional HTTP/TLS connections, HTTP redirects and packets are outside this limit.
 - Ctrl+C preserves observations available when cancellation finishes. Running socket/HTTP/TLS threads may need their timeouts to finish; a second Ctrl+C can force exit before export.
 
