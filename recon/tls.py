@@ -29,6 +29,7 @@ class TLSFinding:
     days_remaining: int | None = None
     verification_code: int | None = None
     verification_message: str | None = None
+    san_ip_addresses: tuple[str, ...] = ()
 
 def format_certificate_name(
     name: CertificateName,) -> str | None:
@@ -76,11 +77,14 @@ def inspect_tls(
                 certificate = cast(
                     CertificateDetails,
                     tls_connection.getpeercert() or {},)
-                san_hostnames = tuple(
-                    value
+                san_hostnames = tuple(value
                     for kind, value in certificate.get(
                         "subjectAltName", ())
                     if kind == "DNS")
+                san_ip_addresses = tuple(value
+                    for kind, value in certificate.get(
+                        "subjectAltName", ())
+                    if kind == "IP Address")
                 return TLSFinding(
                     version=tls_connection.version(),
                     cipher=cipher[0] if cipher else None,
@@ -90,6 +94,7 @@ def inspect_tls(
                     issuer=format_certificate_name(
                         certificate.get("issuer", ())),
                     san_hostnames=san_hostnames,
+                    san_ip_addresses=san_ip_addresses,
                     valid_from=certificate.get("notBefore"),
                     valid_until=certificate.get("notAfter"),
                     days_remaining=certificate_days_remaining(

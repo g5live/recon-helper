@@ -63,10 +63,11 @@ class TLSInspectionTests(unittest.TestCase):
             "TLSv1.3",
             256,)
         tls_connection.getpeercert.return_value = {"subject": ((("commonName", "lab.example"),),),
-            "issuer": ((("commonName", "Example Lab CA"),), ),
+            "issuer": ((("commonName", "Example Lab CA"),),),
             "subjectAltName": (("DNS", "lab.example"),
                 ("DNS", "www.lab.example"),
-                ("IP Address", "192.0.2.1"),),
+                ("IP Address", "192.0.2.1"),
+                ("IP Address", "2001:db8::1"),),
             "notBefore": "Oct  1 00:00:00 2026 GMT",
             "notAfter": "Oct  1 00:00:00 2027 GMT",}
         with (
@@ -93,12 +94,10 @@ class TLSInspectionTests(unittest.TestCase):
         self.assertIsNone(finding.error)
         self.assertEqual(finding.subject, "commonName=lab.example")
         self.assertEqual(finding.issuer, "commonName=Example Lab CA")
-        self.assertEqual(finding.san_hostnames,
-            ("lab.example", "www.lab.example"),)
-        self.assertEqual(finding.valid_from,
-            "Oct  1 00:00:00 2026 GMT",)
-        self.assertEqual(finding.valid_until,
-            "Oct  1 00:00:00 2027 GMT",)
+        self.assertEqual(finding.san_hostnames,("lab.example", "www.lab.example"),)
+        self.assertEqual(finding.san_ip_addresses,("192.0.2.1", "2001:db8::1"),)
+        self.assertEqual(finding.valid_from,"Oct  1 00:00:00 2026 GMT",)
+        self.assertEqual(finding.valid_until,"Oct  1 00:00:00 2027 GMT",)
 
     def test_stores_calculated_days_remaining(self):
         with (
@@ -130,8 +129,7 @@ class TLSInspectionTests(unittest.TestCase):
     def test_records_connection_failure(self):
         with (
             patch("recon.tls.ssl.create_default_context"),
-            patch(
-                "recon.tls.socket.create_connection",
+            patch("recon.tls.socket.create_connection",
                 side_effect=TimeoutError("connection timed out"),),):
             finding = inspect_tls("lab.example", "192.0.2.1", 443)
         self.assertFalse(finding.certificate_verified)
@@ -151,6 +149,39 @@ class TLSInspectionTests(unittest.TestCase):
                 connect.assert_not_called()
 
 class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_custom_tls_port_selection(self):
+        expected = TLSFinding(
+            version="TLSv1.3",
+            certificate_verified=True,)
+        cases = (
+            (True, (9443,), True),
+            (True, (443, 8443), False),
+            (False, (9443,), False),)
+        for enabled, selected_ports, should_inspect in cases:
+            with self.subTest(enabled=enabled, tls_ports=selected_ports):
+                with (
+                    patch(
+                        "recon.scanner._async_probe",
+                        new_callable=AsyncMock,
+                        return_value=(1.0, None),),
+                    patch(
+                        "recon.scanner.inspect_tls",
+                        return_value=expected,
+                    ) as inspect,):
+                    report = await scan(
+                        ["127.0.0.1"],
+                        ports=(9443,),
+                        inspect_tls_enabled=enabled,
+                        tls_ports=selected_ports,)
+                finding = report.hosts[0].open_ports[0]
+                self.assertEqual(finding.port, 9443)
+                if should_inspect:
+                    inspect.assert_called_once_with(
+                        "127.0.0.1", "127.0.0.1", 9443, 3.0,)
+                    self.assertEqual(finding.tls, expected)
+                else:
+                    inspect.assert_not_called()
+                    self.assertIsNone(finding.tls)
     async def test_tls_inspection_is_opt_in(self):
         expected = TLSFinding(
             version="TLSv1.3",
@@ -186,6 +217,7 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
             subject="commonName=lab.example",
             issuer="commonName=Example Lab CA",
             san_hostnames=("lab.example",),
+            san_ip_addresses=("192.0.2.1", "2001:db8::1"),
             valid_from="Oct  1 00:00:00 2026 GMT",
             valid_until="Oct  1 00:00:00 2027 GMT",)
         with (patch(
@@ -204,6 +236,7 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("subject: commonName=lab.example", text)
         self.assertIn("issuer: commonName=Example Lab CA", text)
         self.assertIn("SAN DNS names: lab.example", text)
+        self.assertIn("SAN IP addresses: 192.0.2.1, 2001:db8::1", text)
         self.assertIn("valid from: Oct  1 00:00:00 2026 GMT", text)
         self.assertIn("valid until: Oct  1 00:00:00 2027 GMT", text)
         table = render_table(report)
@@ -214,6 +247,7 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tls["version"], "TLSv1.3")
         self.assertTrue(tls["certificate_verified"])
         self.assertEqual(tls["san_hostnames"], ["lab.example"])
+        self.assertEqual(tls["san_ip_addresses"],["192.0.2.1", "2001:db8::1"],)
 
     async def test_tls_failure_preserves_open_port(self):
         failed_tls = TLSFinding(

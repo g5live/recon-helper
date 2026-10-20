@@ -76,6 +76,7 @@ def render_tls_details(
         f"{indent}subject: {tls.subject or '-'}",
         f"{indent}issuer: {tls.issuer or '-'}",
         f"{indent}SAN DNS names: {', '.join(tls.san_hostnames) or '-'}",
+        f"{indent}SAN IP addresses: {', '.join(tls.san_ip_addresses) or '-'}",
         f"{indent}valid from: {tls.valid_from or '-'}",
         f"{indent}valid until: {tls.valid_until or '-'}",
         f"{indent}certificate expiry: {expiry_summary}",]

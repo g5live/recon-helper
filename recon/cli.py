@@ -108,7 +108,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tls",
         action="store_true",
-        help="check TLS and certificate details on open ports 443 and 8443",)
+        help="check TLS and certificate details on selected open ports",)
+    parser.add_argument(
+        "--tls-ports",
+        type=parse_ports,
+        default=(443, 8443),
+        metavar="PORTS",
+        help="ports eligible for TLS inspection with --tls (default: 443,8443)",)
     parser.add_argument(
         "--http-timeout",
         type=float,
@@ -192,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         "http_timeout": args.http_timeout,
         "inspect_tls_enabled": args.tls,
         "tls_timeout": args.tls_timeout,
+        "tls_ports": args.tls_ports,
         "concurrency": args.concurrency,
         "max_hosts": args.max_hosts,
         "probe_rate": args.probe_rate,
