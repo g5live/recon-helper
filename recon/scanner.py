@@ -289,8 +289,7 @@ async def scan_host(
 
 
 async def scan(
-    targets: list[str] | tuple[str, ...],
-    *,
+    targets: list[str] | tuple[str, ...], *,
     ports: tuple[int, ...] = tuple(TCP_SERVICES),
     engine: str = "async",
     timeout: float = 0.75,
@@ -316,6 +315,10 @@ async def scan(
     if any(not math.isfinite(value) or value <= 0 for value in (
             timeout, banner_timeout, http_timeout, tls_timeout,)):
         raise ValueError("timeouts must be greater than zero")
+    if not tls_ports or any(type(port) is not int or not 1 <= port <= 65535
+        for port in tls_ports):
+        raise ValueError("TLS ports must be integers between 1 and 65535")
+    clean_tls_ports = tuple(sorted(set(tls_ports)))
     expanded = expand_targets(targets, max_hosts=max_hosts)
     clean_ports = tuple(sorted(set(ports)))
     if not clean_ports or any(port < 1 or port > 65535 for port in clean_ports):
@@ -331,7 +334,7 @@ async def scan(
         banner_timeout=banner_timeout, semaphore=semaphore,
         inspect_http=inspect_http, http_timeout=http_timeout,
         inspect_tls_enabled=inspect_tls_enabled, tls_timeout=tls_timeout,
-        tls_ports=tls_ports, pacer=pacer, state=state,
+        tls_ports=clean_tls_ports, pacer=pacer, state=state,
     )) for state in states]
     interrupted = False
     try:

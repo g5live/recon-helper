@@ -66,6 +66,8 @@ Exports create new files only; existing files are never overwritten and parent d
 
 Verification checks certificate trust, validity and whether the certificate matches the target hostname or IP address. Failures are recorded without discarding the open-port finding. Certificate dates may be unavailable when verification fails.
 
+Direct Python calls to `scan()` also validate `tls_ports`: supply a non-empty tuple of integers from 1 to 65535. Invalid selections raise `ValueError` even when TLS inspection is disabled. Valid selections are sorted and duplicates removed.
+
 **Explanations (`--explain`):** adds plain-English guidance to text output and text exports: what a finding means, what remains unknown and what to check next. HTTP and TLS guidance can both appear for the same port. Tables and JSON retain their usual format.
 
 Text and JSON show detailed findings; the table gives a compact view. Logs go to stderr, or a file with `--log-file recon.log`, separately from result output.
@@ -97,6 +99,6 @@ The main flow is **input → scan → findings → output**. The code separates 
 python -m unittest discover -s tests -v
 ```
 
-The current checkpoint is **63 passing tests**. Local HTTPS checks also confirmed both rejection of an untrusted self-signed certificate and successful verification when that certificate was explicitly trusted for the command.
+The current checkpoint is **67 passing tests**. Local HTTPS checks also confirmed both rejection of an untrusted self-signed certificate and successful verification when that certificate was explicitly trusted for the command.
 
 Part of the G5LIVE app family. See the [brand guide](assets/brand/BRAND.md) and [release-readiness notes](docs/RELEASE_READINESS.md).

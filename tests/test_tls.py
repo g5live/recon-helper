@@ -149,6 +149,26 @@ class TLSInspectionTests(unittest.TestCase):
                 connect.assert_not_called()
 
 class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_rejects_invalid_tls_ports_before_scanning(self):
+        invalid_selections = (
+            (),
+            (0,),
+            (-1,),
+            (65536,),
+            ("443",),
+            (443.0,),
+            (True,),
+            (None,),
+            (443, 70000),)
+        for selection in invalid_selections:
+            for enabled in (False, True):
+                with self.subTest(tls_ports=selection, enabled=enabled):
+                    with patch("recon.scanner.scan_host",new_callable=AsyncMock,) as scan_host_mock:
+                        with self.assertRaisesRegex(
+                            ValueError,"TLS ports must be integers between 1 and 65535",):
+                            await scan(["127.0.0.1"], ports=(443,), tls_ports=selection, inspect_tls_enabled=enabled,)
+                        scan_host_mock.assert_not_called()
+
     async def test_custom_tls_port_selection(self):
         expected = TLSFinding(
             version="TLSv1.3",
@@ -182,6 +202,7 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
                 else:
                     inspect.assert_not_called()
                     self.assertIsNone(finding.tls)
+
     async def test_tls_inspection_is_opt_in(self):
         expected = TLSFinding(
             version="TLSv1.3",
@@ -276,4 +297,12 @@ class TLSScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tls["error"], failed_tls.error)
         self.assertFalse(tls["certificate_verified"])
 
-
+    async def test_normalises_valid_tls_ports_before_scanning(self):
+        with patch("recon.scanner.scan_host", new_callable=AsyncMock,) as scan_host_mock:
+            await scan(["127.0.0.1"],
+                ports=(443,),
+                tls_ports=(65535, 443, 1, 443),
+                inspect_tls_enabled=True,)
+        scan_host_mock.assert_awaited_once()
+        options = scan_host_mock.await_args.kwargs
+        self.assertEqual(options["tls_ports"],(1, 443, 65535),)
