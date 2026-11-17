@@ -1,6 +1,8 @@
 """Render structured scan results without coupling scanning to ``print()``."""
 from __future__ import annotations
+from dataclasses import asdict
 import json
+from recon.udp import UdpReport
 from recon.explain import explain_finding, explain_tls
 from typing import TYPE_CHECKING
 from pathlib import Path
@@ -9,9 +11,9 @@ if TYPE_CHECKING:
     from recon.web import WebFinding
     from recon.tls import TLSFinding
 
-def render_json(report: ScanReport) -> str:
+def render_json(report: ScanReport | UdpReport) -> str:
     """Serialize the scan report to a formatted JSON string."""
-    return json.dumps(report.to_dict(), indent=2)
+    return json.dumps(asdict(report) if isinstance(report, UdpReport) else report.to_dict(), indent=2)
 
 def render_web_details(web: WebFinding, indent: str = "    ") -> list[str]:
     """Render canonical HTTP evidence for text and legacy views."""
@@ -57,8 +59,9 @@ def render_tls_details(
     tls: TLSFinding,
     indent: str = "    ",
 ) -> list[str]:
+    mode = " (SMTP STARTTLS)" if tls.mode == "smtp-starttls" else ""
     if tls.error:
-        return [f"{indent}TLS inspection failed: {tls.error}"]
+        return [f"{indent}TLS inspection failed{mode}: {tls.error}"]
     verification = ("verified" if tls.certificate_verified else "not verified")
     if tls.days_remaining is None:
         expiry_summary = "unknown"
@@ -71,7 +74,7 @@ def render_tls_details(
     else:
         expiry_summary = f"{tls.days_remaining} whole days remaining"
     return [
-        f"{indent}TLS: {tls.version or '-'} | cipher: {tls.cipher or '-'}",
+        f"{indent}TLS{mode}: {tls.version or '-'} | cipher: {tls.cipher or '-'}",
         f"{indent}certificate: {verification}",
         f"{indent}subject: {tls.subject or '-'}",
         f"{indent}issuer: {tls.issuer or '-'}",
@@ -81,8 +84,10 @@ def render_tls_details(
         f"{indent}valid until: {tls.valid_until or '-'}",
         f"{indent}certificate expiry: {expiry_summary}",]
 
-def render_text(report: ScanReport, explain: bool = False) -> str:
+def render_text(report: ScanReport | UdpReport, explain: bool = False) -> str:
     """Render human-readable text output with nested finding details."""
+    if isinstance(report, UdpReport):
+        return render_udp_text(report, explain)
     lines: list[str] = [
         "RECON HELPER",
         f"engine: {report.engine}",
@@ -133,7 +138,9 @@ def render_text(report: ScanReport, explain: bool = False) -> str:
                             f"    What to check next: {explanation.next_check}",))
     return "\n".join(lines)
 
-def render_table(report: ScanReport) -> str:
+def render_table(report: ScanReport | UdpReport) -> str:
+    if isinstance(report, UdpReport):
+        return render_udp_table(report)
     headings = (
         "TARGET", "ADDRESS", "PORT", "HINT",
         "DETECTED", "LATENCY", "HTTP", "TLS", "URL", "CHECKS",)
@@ -172,8 +179,43 @@ def render_table(report: ScanReport) -> str:
                   for host in report.hosts if not host.complete and host.open_ports]
     return prefix + table + ("\n" + "\n".join(unfinished) if unfinished else "")
 
+def render_udp_text(report: UdpReport, explain: bool = False) -> str:
+    lines = ["RECON HELPER — UDP", f"targets: {len(report.hosts)} | ports per target: {len(report.ports)} | duration: {report.duration_ms} ms"]
+    if report.interrupted:
+        lines.append("status: INTERRUPTED — partial report; unfinished checks are unknown")
+    if report.probe_rate is not None:
+        lines.append(f"UDP probe dispatch limit: {report.probe_rate:g}/second")
+    for host in report.hosts:
+        lines.extend(("", f"{host.target} ({host.address or 'unresolved'})"))
+        if host.error:
+            lines.append(f"  error: {host.error}")
+        if not host.complete:
+            lines.append(f"  incomplete: {len(host.results)}/{len(report.ports)} UDP checks observed")
+        for finding in host.results:
+            size = f" ({finding.response_bytes} bytes)" if finding.response_bytes is not None else ""
+            lines.append(f"  {finding.port}/udp {finding.status}  hint: {finding.service_hint} — {finding.evidence}{size}")
+    if explain:
+        lines.append("UDP has no handshake. A reply shows a responding endpoint; a service hint is based on the port number. Silence does not confirm that a port is closed.")
+    return "\n".join(lines)
+
+
+def render_udp_table(report: UdpReport) -> str:
+    rows = [("TARGET", "ADDRESS", "PORT", "STATUS", "HINT", "EVIDENCE")]
+    for host in report.hosts:
+        for finding in host.results:
+            rows.append((host.target, host.address or "-", f"{finding.port}/udp",
+                         finding.status, finding.service_hint, finding.evidence))
+        if host.error or not host.complete:
+            rows.append((host.target, host.address or "-", "-", "error" if host.error else "incomplete", "-",
+                         host.error or f"{len(host.results)}/{len(report.ports)} UDP checks observed"))
+    widths = [max(map(len, column)) for column in zip(*rows)]
+    rows.insert(1, tuple("-" * width for width in widths))
+    table = "\n".join("  ".join(value.ljust(width) for value, width in zip(row, widths)) for row in rows)
+    return ("INTERRUPTED — PARTIAL UDP REPORT\n" if report.interrupted else "") + table
+
+
 def render(
-    report: ScanReport,
+    report: ScanReport | UdpReport,
     output_format: str,
     explain: bool = False,
 ) -> str:
@@ -186,7 +228,7 @@ def render(
     return render_text(report, explain=explain)
 
 def write_report(
-    report: ScanReport,
+    report: ScanReport | UdpReport,
     path: Path,
     output_format: str,
     explain: bool = False,

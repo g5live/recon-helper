@@ -70,6 +70,9 @@ class TLSInspectionTests(unittest.TestCase):
                 ("IP Address", "2001:db8::1"),),
             "notBefore": "Oct  1 00:00:00 2026 GMT",
             "notAfter": "Oct  1 00:00:00 2027 GMT",}
+        tls_connection.getpeercert.side_effect = [
+            tls_connection.getpeercert.return_value,
+            b"abc",]
         with (
             patch("recon.tls.socket.create_connection") as connect,
             patch("recon.tls.ssl.create_default_context") as create_context,):
@@ -110,6 +113,9 @@ class TLSInspectionTests(unittest.TestCase):
                 .__enter__.return_value)
             tls_connection.getpeercert.return_value = {
                 "notAfter": "Oct 28 00:00:00 2026 GMT",}
+            tls_connection.getpeercert.side_effect = [
+                tls_connection.getpeercert.return_value,
+                b"abc",]
             finding = inspect_tls("lab.example", "192.0.2.1", 443)
         self.assertEqual(finding.days_remaining, 12)
         calculate_days.assert_called_once_with(

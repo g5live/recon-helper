@@ -1,6 +1,5 @@
 """Argument parsing, logging, SIGINT handling, and command-line entry point."""
 from __future__ import annotations
-
 import argparse
 import asyncio
 import logging
@@ -9,6 +8,11 @@ from pathlib import Path
 from recon.legacy import main as legacy_main
 from recon.output import render, write_report
 from recon.scanner import TargetError, scan
+from recon.udp import scan_udp
+from xml.etree.ElementTree import ParseError
+from recon.compare import compare_scans
+from recon.evidence import SavedScan, load_nmap_xml, load_recon_json
+from recon.retest import render_retest_summary
 
 PORT_PRESETS: dict[str, tuple[int, ...]] = {
     "web": (80, 443, 8080, 8443),
@@ -50,7 +54,7 @@ def read_target_file(path: Path) -> list[str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="G5LIVE Recon Helper — gather useful clues from TCP services",
+        description="G5LIVE Recon Helper — gather useful clues from TCP and UDP services",
         formatter_class=lambda prog: argparse.HelpFormatter(
             prog,
             max_help_position=36,
@@ -60,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.75,
         metavar="SECONDS",
-        help="how long to wait for a TCP connection (default: 0.75 seconds)",)
+        help="how long to wait for a TCP connection or UDP response (default: 0.75 seconds)",)
     parser.add_argument("targets", nargs="*", help="hostname, URL, IP address, or CIDR network")
     parser.add_argument(
         "-iL",
@@ -76,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--preset",
         choices=PORT_PRESETS,
         help="select a named port set",)
+    parser.add_argument("--udp", action="store_true", help="scan UDP only; requires explicit --ports")
     parser.add_argument("--engine", choices=("async", "socket"), default="async")
     parser.add_argument("--format", choices=("text", "table", "json"), default="text")
     parser.add_argument(
@@ -99,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="save a compact table to a new file",)
     parser.add_argument(
         "--probe-rate", type=float,
-        help="maximum TCP probe dispatches per second across all hosts (not HTTP/TLS request rate)",)
+        help="maximum TCP or UDP probe dispatches per second across all hosts (not HTTP/TLS request rate)",)
     parser.add_argument("--banner-timeout", type=float, default=0.35)
     parser.add_argument(
         "--http",
@@ -115,6 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=(443, 8443),
         metavar="PORTS",
         help="ports eligible for TLS inspection with --tls (default: 443,8443)",)
+    parser.add_argument(
+        "--smtp-starttls-ports", type=parse_ports, metavar="PORTS", default=(),
+        help="request SMTP STARTTLS on selected open TCP ports (no --tls needed)",)
     parser.add_argument(
         "--http-timeout",
         type=float,
@@ -142,9 +150,61 @@ def configure_logging(level: str, log_file: Path | None) -> None:
         handlers=handlers,
         force=True,)
 
+def load_saved_scan(path: Path) -> SavedScan:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        return load_recon_json(path)
+    if suffix == ".xml":
+        return load_nmap_xml(path)
+    raise ValueError(f"Expected a .json or .xml scan file: {path}")
+
+def compare_main(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="recon-helper compare",
+        description="Compare two saved scans without sending probes.",)
+    parser.add_argument("baseline", type=Path)
+    parser.add_argument("retest", type=Path)
+    parser.add_argument("--summary", action="store_true", help="print a Markdown retest summary",)
+    args = parser.parse_args(arguments)
+    try:
+        baseline = load_saved_scan(args.baseline)
+        retest = load_saved_scan(args.retest)
+        deltas = compare_scans(baseline, retest)
+    except (OSError, ValueError, ParseError, KeyError, TypeError, OverflowError) as error:
+        print(f"Cannot compare scans: {error}", file=sys.stderr)
+        return 2
+    if args.summary:
+        print(render_retest_summary(baseline, retest, deltas))
+        return 0
+    print(f"Baseline: {args.baseline} ({baseline.source})")
+    print(f"Retest:   {args.retest} ({retest.source})")
+    print("These are recorded outcomes. Scope and vantage point have not been verified.")
+    for label, scan in (("Baseline", baseline), ("Retest", retest)):
+        if scan.interrupted is True:
+            print(f"{label} was interrupted; its observations are partial.")
+    if not deltas:
+        print("Neither file contains explicit port observations.")
+    for delta in deltas:
+        address, protocol, port = delta.endpoint
+        before = delta.before.outcome if delta.before else "not observed"
+        after = delta.after.outcome if delta.after else "not observed"
+        print(f"{address} {port}/{protocol}: {before} -> {after} ({delta.kind})")
+        for tls_change in delta.tls_changes:
+            print(f"  TLS: {tls_change}")
+    return 0
+
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["compare"]:
+        return compare_main(arguments[1:])
     args = build_parser().parse_args(arguments)
+    if args.udp:
+        if args.ports is None:
+            print("Error: --udp requires explicit --ports.", file=sys.stderr)
+            return 2
+        if args.legacy or args.engine != "async" or args.http or args.tls or args.smtp_starttls_ports:
+            print("Error: --udp cannot be combined with TCP/legacy inspection options or the socket engine.", file=sys.stderr)
+            return 2
     if args.legacy:
         legacy_main()
         return 0
@@ -199,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         "inspect_tls_enabled": args.tls,
         "tls_timeout": args.tls_timeout,
         "tls_ports": args.tls_ports,
+        "smtp_starttls_ports": args.smtp_starttls_ports,
         "concurrency": args.concurrency,
         "max_hosts": args.max_hosts,
         "probe_rate": args.probe_rate,
@@ -208,7 +269,13 @@ def main(argv: list[str] | None = None) -> int:
     elif args.preset is not None:
         options["ports"] = PORT_PRESETS[args.preset]
     try:
-        report = asyncio.run(scan(targets, **options))
+        if args.udp:
+            report = asyncio.run(scan_udp(
+                targets, ports=args.ports, timeout=args.timeout,
+                concurrency=args.concurrency, max_hosts=args.max_hosts,
+                probe_rate=args.probe_rate, preserve_on_cancel=True,))
+        else:
+            report = asyncio.run(scan(targets, **options))
     except KeyboardInterrupt:
         logging.getLogger(__name__).warning("scan interrupted by SIGINT")
         return 130

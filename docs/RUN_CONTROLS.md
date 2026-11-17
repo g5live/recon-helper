@@ -6,7 +6,7 @@
 python recon.py 127.0.0.1 --ports 22,80,443 --probe-rate 2 --concurrency 5 --format table -oA scan-table.txt
 ```
 
-Concurrency is how many operations can be in flight. Probe rate spaces the dispatch of new TCP probes across all hosts, including the socket engine. At two per second, dispatches are at least half a second apart; idle time does not earn a burst of extra probes. Without this option, concurrency remains the only dispatch constraint.
+Concurrency is how many operations can be in flight. Probe rate spaces the dispatch of new TCP or UDP probes across all hosts, including the socket engine. At two per second, dispatches are at least half a second apart; idle time does not earn a burst of extra probes. Without this option, concurrency remains the only dispatch constraint.
 
 This is a dispatch limit, not a packet or total-request limit. Socket threads can start later than dispatch. Optional HTTP inspection (including redirects and robots.txt), TLS inspection and DNS queries are outside the pacing limit. Positive finite values are required for rate and timeouts.
 
@@ -29,6 +29,12 @@ JSON adds these fields without removing the previous evidence fields:
 Text explains unfinished host work. The table marks unfinished open-port inspection as `pending` and includes unresolved/incomplete hosts even if no open port was observed. No observation yet means unknown, not closed. Check `error`, HTTP and TLS details separately for failed inspections.
 
 The Python `scan()` API propagates cancellation by default. Set `preserve_on_cancel=True` only when the caller intends to consume a partial report. The CLI enables it.
+
+## UDP reports
+
+Use `--udp --ports ...` to scan UDP instead of TCP. UDP uses a bounded set of async workers and shares one pacing limit across targets. `--timeout` bounds a probe after dispatch. HTTP, TLS and the TCP socket engine do not apply to UDP.
+
+UDP JSON identifies the protocol as `udp` and puts completed outcomes in `hosts[].results`, including silence (`open|filtered`) and socket errors. An interrupted probe is omitted rather than labelled as silence. Compare the number of results to the selected port count, and check `complete` and `error` before interpreting missing results. The Python `scan_udp()` API also propagates cancellation unless partial reports are explicitly requested.
 
 ## Save a view
 

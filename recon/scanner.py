@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 from recon.web import WebFinding, inspect_url
 from recon.protocols import TCP_SERVICES, detect_banner_service, probe_payload, readable_banner, service_name, socket_probe, web_url
 from recon.tls import TLSFinding, inspect_tls
+from typing import Literal
 LOGGER = logging.getLogger(__name__)
 
 class TargetError(ValueError):
@@ -32,6 +33,12 @@ class PortFinding:
     inspection_complete: bool = True
 
 @dataclass(frozen=True, slots=True)
+class TcpAttempt:
+    port: int
+    outcome: Literal["open", "refused", "timeout", "error"]
+    evidence: str
+
+@dataclass(frozen=True, slots=True)
 class HostScan:
     target: str
     address: str | None
@@ -39,6 +46,7 @@ class HostScan:
     error: str | None = None
     checked_ports: tuple[int, ...] = ()
     complete: bool = True
+    tcp_attempts: tuple[TcpAttempt, ...] = ()
 
 @dataclass(frozen=True, slots=True)
 class ScanReport:
@@ -79,11 +87,17 @@ class HostProgress:
     checked: set[int] = field(default_factory=set)
     error: str | None = None
     complete: bool = False
+    attempts: dict[int, TcpAttempt] = field(default_factory=dict)
 
     def snapshot(self) -> HostScan:
-        return HostScan(self.target, self.address,
-                        tuple(self.findings[port] for port in sorted(self.findings)),
-                        self.error, tuple(sorted(self.checked)), self.complete)
+        return HostScan(
+            self.target,
+            self.address,
+            tuple(self.findings[port] for port in sorted(self.findings)),
+            self.error,
+            tuple(sorted(self.checked)),
+            self.complete,
+            tcp_attempts=tuple(self.attempts[port] for port in sorted(self.attempts)),)
 
 def normalise_target(value: str) -> str:
     candidate = value.strip()
@@ -120,7 +134,7 @@ def expand_targets(values: list[str] | tuple[str, ...], max_hosts: int = 256) ->
         raise TargetError("no usable targets supplied")
     return tuple(expanded)
 
-async def resolve_target(target: str) -> str:
+async def resolve_target(target: str) -> str | int:
     try:
         return str(ipaddress.ip_address(target))
     except ValueError:
@@ -176,11 +190,16 @@ async def scan_port(
     inspect_tls_enabled: bool = False,
     tls_timeout: float = 3.0,
     tls_ports: tuple[int, ...] = (443, 8443),
+    smtp_starttls_ports: tuple[int, ...] = (),
     pacer: ProbePacer | None = None,
     state: HostProgress | None = None,
 ) -> PortFinding | None:
+    connected_latency: float | None = None
     def connected(latency: float) -> None:
+        nonlocal connected_latency
+        connected_latency = latency
         if state is not None:
+            state.attempts[port] = TcpAttempt(port, "open", "TCP connection succeeded")
             state.checked.add(port)
             state.findings[port] = PortFinding(
                 port, service_name(port), round(latency, 2),
@@ -199,20 +218,31 @@ async def scan_port(
                     on_connected=lambda latency: loop.call_soon_threadsafe(connected, latency),)
             else:
                 raise ValueError(f"unsupported engine: {engine}")
-        except (ConnectionError, OSError, TimeoutError):
-            LOGGER.debug("closed or filtered: %s:%s", address, port)
-            if state is not None:
-                state.checked.add(port)
-            return None
+        except OSError as error:
+            if connected_latency is not None:
+                LOGGER.debug("banner probe failed after connection: %s:%s", address, port)
+                latency_ms, banner = connected_latency, None
+            else:
+                if state is not None:
+                    state.checked.add(port)
+                    if isinstance(error, ConnectionRefusedError):
+                        attempt = TcpAttempt(port, "refused", "TCP connection refused")
+                    elif isinstance(error, TimeoutError):
+                        attempt = TcpAttempt(port, "timeout", "TCP connection timed out")
+                    else:
+                        attempt = TcpAttempt(port, "error", f"TCP connection error: {error}")
+                    state.attempts[port] = attempt
+                return None
 
     LOGGER.info("open: %s (%s) %s/tcp", target, address, port)
     endpoint = web_url(target, port)
-    # Retain open-port/banner evidence before potentially slower enrichment.
     base = PortFinding(port, service_name(port), round(latency_ms, 2),
                        banner=banner, detected_service=detect_banner_service(banner),
                        url=endpoint, inspection_complete=False)
     if state is not None:
         state.checked.add(port)
+        state.attempts.setdefault(
+            port, TcpAttempt(port, "open", "TCP connection succeeded"),)
         state.findings[port] = base
     web = None
     if inspect_http and endpoint:
@@ -224,14 +254,11 @@ async def scan_port(
     if state is not None and web is not None:
         state.findings[port] = replace(base, web=web)
     tls = None
-    if inspect_tls_enabled and port in tls_ports:
+    if port in smtp_starttls_ports or (inspect_tls_enabled and port in tls_ports):
+        tls_options = {"smtp_starttls": True} if port in smtp_starttls_ports else {}
         async with semaphore:
             tls = await asyncio.to_thread(
-                inspect_tls,
-                target,
-                address,
-                port,
-                tls_timeout,)
+                inspect_tls, target, address, port, tls_timeout, **tls_options,)
     finding = PortFinding(
         port=port,
         service=service_name(port),
@@ -258,6 +285,7 @@ async def scan_host(
     inspect_tls_enabled: bool = False,
     tls_timeout: float = 3.0,
     tls_ports: tuple[int, ...] = (443, 8443),
+    smtp_starttls_ports: tuple[int, ...] = (),
     pacer: ProbePacer | None = None,
     state: HostProgress | None = None,
 ) -> HostScan:
@@ -281,12 +309,12 @@ async def scan_host(
             semaphore=semaphore, inspect_http=inspect_http,
             http_timeout=http_timeout, inspect_tls_enabled=inspect_tls_enabled,
             tls_timeout=tls_timeout, tls_ports=tls_ports,
+            smtp_starttls_ports=smtp_starttls_ports,
             pacer=pacer, state=state,
         ) for port in ports)
     )
     state.complete = True
     return state.snapshot()
-
 
 async def scan(
     targets: list[str] | tuple[str, ...], *,
@@ -299,6 +327,7 @@ async def scan(
     inspect_tls_enabled: bool = False,
     tls_timeout: float = 3.0,
     tls_ports: tuple[int, ...] = (443, 8443),
+    smtp_starttls_ports: tuple[int, ...] = (),
     concurrency: int = 100,
     max_hosts: int = 256,
     probe_rate: float | None = None,
@@ -319,6 +348,11 @@ async def scan(
         for port in tls_ports):
         raise ValueError("TLS ports must be integers between 1 and 65535")
     clean_tls_ports = tuple(sorted(set(tls_ports)))
+    if any(type(port) is not int or not 1 <= port <= 65535 for port in smtp_starttls_ports):
+        raise ValueError("SMTP STARTTLS ports must be integers between 1 and 65535")
+    clean_smtp_ports = tuple(sorted(set(smtp_starttls_ports)))
+    if inspect_tls_enabled and set(clean_tls_ports).intersection(clean_smtp_ports):
+        raise ValueError("direct TLS and SMTP STARTTLS ports must not overlap")
     expanded = expand_targets(targets, max_hosts=max_hosts)
     clean_ports = tuple(sorted(set(ports)))
     if not clean_ports or any(port < 1 or port > 65535 for port in clean_ports):
@@ -334,7 +368,7 @@ async def scan(
         banner_timeout=banner_timeout, semaphore=semaphore,
         inspect_http=inspect_http, http_timeout=http_timeout,
         inspect_tls_enabled=inspect_tls_enabled, tls_timeout=tls_timeout,
-        tls_ports=clean_tls_ports, pacer=pacer, state=state,
+        tls_ports=clean_tls_ports, smtp_starttls_ports=clean_smtp_ports, pacer=pacer, state=state,
     )) for state in states]
     interrupted = False
     try:
